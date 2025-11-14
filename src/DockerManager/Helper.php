@@ -2,7 +2,7 @@
 
 namespace Orryv\DockerManager;
 
-use Orryv\DockerManager\FindNextPort;
+use Orryv\DockerManager\Ports\FindNextPort;
 use Orryv\Cmd;
 use Orryv\DockerManager;
 use Orryv\XString;

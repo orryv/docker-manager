@@ -1,6 +1,6 @@
 <?php 
 
-namespace Orryv\DockerManager;
+namespace Orryv\DockerManager\Ports;
 
 use RuntimeException;
 

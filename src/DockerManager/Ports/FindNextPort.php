@@ -1,8 +1,8 @@
 <?php 
 
-namespace Orryv\DockerManager;
+namespace Orryv\DockerManager\Ports;
 
-use Orryv\DockerManager\PortFinder;
+use Orryv\DockerManager\Ports\PortFinder;
 
 class FindNextPort
 {
