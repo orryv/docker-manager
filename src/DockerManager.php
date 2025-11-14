@@ -113,6 +113,7 @@ class DockerManager
         $outputBuffer = '';
         $last_cycle = false;
         $process_exited = false;
+        $exit_iterations = 0;
         for ($i = 0; $i < 3000; $i++) { // ~5 minutes
             $streams = [];
             if ($stdout && is_resource($stdout) && !feof($stdout)) {
@@ -163,11 +164,11 @@ class DockerManager
                         }
                     }
                     $this->parseDockerOutput($outputBuffer);
-                    // Continue reading for a few more cycles (up to 1 second)
-                    // to catch any remaining buffered output
-                    usleep(250000);
-                    continue;
-                } else {
+                }
+                
+                // Give it a few iterations (up to 1 second total) to catch all buffered output
+                $exit_iterations++;
+                if ($exit_iterations >= 4) {
                     // Check if there's more output
                     $hasMore = false;
                     if ($stdout && is_resource($stdout) && !feof($stdout)) {
@@ -181,6 +182,8 @@ class DockerManager
                         break;
                     }
                 }
+                
+                usleep(250000);
             }
         }
 
