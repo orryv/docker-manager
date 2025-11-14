@@ -4,8 +4,43 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "647c083561f8ccc0b6a91c0c555be4da",
+    "content-hash": "c6c9ecffbe63372e05df524545f3abdd",
     "packages": [
+        {
+            "name": "orryv/tools",
+            "version": "v1.0.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/orryv/tools.git",
+                "reference": "912b329dca96f92acb88eabaeb17ab65f305064b"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/orryv/tools/zipball/912b329dca96f92acb88eabaeb17ab65f305064b",
+                "reference": "912b329dca96f92acb88eabaeb17ab65f305064b",
+                "shasum": ""
+            },
+            "require-dev": {
+                "phpunit/phpunit": "^11.4"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "Orryv\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "authors": [
+                {
+                    "name": "Orry"
+                }
+            ],
+            "support": {
+                "issues": "https://github.com/orryv/tools/issues",
+                "source": "https://github.com/orryv/tools/tree/v1.0.0"
+            },
+            "time": "2025-11-14T01:55:36+00:00"
+        },
         {
             "name": "orryv/x-string",
             "version": "v1.1.4",

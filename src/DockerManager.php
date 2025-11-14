@@ -1,6 +1,6 @@
 <?php
 
-namespace Orryv\Docker2;
+namespace Orryv;
 
 use InvalidArgumentException;
 use Orryv\Config;
@@ -8,7 +8,7 @@ use Orryv\XString;
 use Orryv\XStringType;
 use RuntimeException;
 
-class Manager
+class DockerManager
 {
     private ?string $docker_workdir = null;
     private ?string $docker_compose_relative_path = null;
