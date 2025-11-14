@@ -72,27 +72,17 @@ class DockerManager
                 . ' && ' . $composeBin . ' -f ' . $composeFileArg . ' up -d --force-recreate --renew-anon-volumes'
             : $composeBin . ' -f ' . $composeFileArg . ' up -d';
 
-        // 4) Prepare the log
-        $output_dir = rtrim(sys_get_temp_dir())
-            . DIRECTORY_SEPARATOR . 'tmp' . DIRECTORY_SEPARATOR;
-        if (!is_dir($output_dir)) {
-            mkdir($output_dir, 0755, true);
-        }
-        $output_file = $output_dir . 'docker-compose-' . time() . '-' . uniqid() . '.log';
-
-        // 5) Start non-blocking via proc_open (cross-platform)
+        // 4) Start non-blocking via proc_open (cross-platform)
         $cmd = $isWin
             ? 'cmd.exe /C ' . $composeCmd
             : '/bin/sh -lc ' . escapeshellarg($composeCmd);
 
         $descriptors = [
             0 => ['pipe', 'r'],
-            1 => ['file', $output_file, 'a'],
-            2 => ['file', $output_file, 'a'],
+            1 => ['pipe', 'w'],
+            2 => ['pipe', 'w'],
         ];
-        $options = $isWin
-            ? ['detached' => true, 'suppress_errors' => true]
-            : [];
+        $options = [];
 
         // Build environment that includes injected variables
         $env = $this->buildProcessEnv();
@@ -102,31 +92,98 @@ class DockerManager
         if (!is_resource($proc)) {
             throw new \RuntimeException('Failed to start compose process.');
         }
+        $stdout = $pipes[1] ?? null;
+        $stderr = $pipes[2] ?? null;
         if (isset($pipes[0]) && is_resource($pipes[0])) {
             fclose($pipes[0]);
         }
+        if ($stdout && is_resource($stdout)) {
+            stream_set_blocking($stdout, false);
+        }
+        if ($stderr && is_resource($stderr)) {
+            stream_set_blocking($stderr, false);
+        }
 
-        // 6) Stream the log while the process runs
+        // 5) Stream the log while the process runs
+        $outputBuffer = '';
         $last_cycle = false;
         for ($i = 0; $i < 3000; $i++) { // ~5 minutes
-            clearstatcache(false, $output_file);
-            if (is_file($output_file)) {
-                $this->parseDockerOutput(file_get_contents($output_file));
+            $streams = [];
+            if ($stdout && is_resource($stdout) && !feof($stdout)) {
+                $streams[] = $stdout;
             }
+            if ($stderr && is_resource($stderr) && !feof($stderr)) {
+                $streams[] = $stderr;
+            }
+
+            if ($streams) {
+                $write = null;
+                $except = null;
+                $selected = stream_select($streams, $write, $except, 0, 250000);
+                if ($selected === false) {
+                    break;
+                }
+                if ($selected > 0) {
+                    foreach ($streams as $stream) {
+                        $chunk = stream_get_contents($stream);
+                        if ($chunk !== false && $chunk !== '') {
+                            $outputBuffer .= $chunk;
+                        }
+                    }
+                }
+            } else {
+                usleep(250000); // 0.25s
+            }
+
+            $this->parseDockerOutput($outputBuffer);
+
             $st = proc_get_status($proc);
             if (!$st['running']) {
+                if ($stdout && is_resource($stdout)) {
+                    $chunk = stream_get_contents($stdout);
+                    if ($chunk !== false && $chunk !== '') {
+                        $outputBuffer .= $chunk;
+                    }
+                }
+                if ($stderr && is_resource($stderr)) {
+                    $chunk = stream_get_contents($stderr);
+                    if ($chunk !== false && $chunk !== '') {
+                        $outputBuffer .= $chunk;
+                    }
+                }
+                $this->parseDockerOutput($outputBuffer);
                 $last_cycle = true;
             }
             if ($last_cycle) {
                 break;
             }
-            usleep(250000); // 0.25s
+        }
+
+        $this->parseDockerOutput($outputBuffer);
+
+        if ($stdout && is_resource($stdout)) {
+            fclose($stdout);
+        }
+        if ($stderr && is_resource($stderr)) {
+            fclose($stderr);
+        }
+
+        $procStatus = proc_get_status($proc);
+        if (!$procStatus['running']) {
+            proc_close($proc);
         }
 
         // cleanup temp compose
         @unlink($tmp);
-        if (!$save_logs) {
-            @unlink($output_file);
+
+        if ($save_logs) {
+            $output_dir = rtrim(sys_get_temp_dir())
+                . DIRECTORY_SEPARATOR . 'tmp' . DIRECTORY_SEPARATOR;
+            if (!is_dir($output_dir)) {
+                mkdir($output_dir, 0755, true);
+            }
+            $output_file = $output_dir . 'docker-compose-' . time() . '-' . uniqid() . '.log';
+            file_put_contents($output_file, $outputBuffer);
         }
 
         // 7) if docker reported errors in the build/up stage, return false
