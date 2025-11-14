@@ -7,245 +7,171 @@ use Orryv\Config;
 use Orryv\XString;
 use Orryv\XStringType;
 use RuntimeException;
+use Orryv\Path;
+
+
+/*
+TODO:
+implement:
+public function getDockerCompose(): ?array
+public function getDockerComposePath(): ?string
+public function getDockerComposeDir(): ?string
+public function getEnvVariables(): array
+public function getName(): ?string
+public function getLastOutput(): ?string
+public function getLastExitCode(): ?int
+
+*/
 
 class DockerManager
 {
-    private ?string $docker_workdir = null;
-    private ?string $docker_compose_relative_path = null;
-    private array $parsed_docker_compose;
-    private array $inject_variables = [];
-    private array $docker_output = [];
-    private $progress_callback = null;
-    private string $yaml_parser;
+    private ?XString $docker_compose_path = null;
+    private ?XString $docker_compose_dir = null;
+    private ?XString $name = null;
 
-    public function __construct(string $docker_workdir, string $docker_compose_relative_path, string $yaml_parser = 'ext')
+    private string $yaml_parser_raw;
+    private ?array $docker_compose = null;
+    private array $env_variables = [];
+    private ?XString $debug_path = null; // outputs tmp docker-compose and docker console output dump to this path.
+    private ?XString $dockerfile_path = null; // used when fromDockerfile is called.
+
+    private bool $from_is_already_called = false;
+
+    public function __construct(string $yaml_parser = 'ext')
     {
-        if (!in_array($yaml_parser, ['ext', 'symfony'], true)) {
-            throw new InvalidArgumentException("Invalid YAML parser '{$yaml_parser}'. Use 'ext' or 'symfony'.");
-        }
-        $this->yaml_parser = $yaml_parser;
-
-        if (!is_dir($docker_workdir)) {
-            throw new InvalidArgumentException("Docker workdir '{$docker_workdir}' is not a valid directory.");
-        }
-        $docker_workdir = str_replace(['\\', '/'], DIRECTORY_SEPARATOR, $docker_workdir);
-        $docker_compose_relative_path = str_replace(['\\', '/'], DIRECTORY_SEPARATOR, $docker_compose_relative_path);
-
-        $this->docker_workdir = rtrim($docker_workdir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
-        $this->docker_compose_relative_path = ltrim($docker_compose_relative_path, DIRECTORY_SEPARATOR);
-
-        if (!file_exists($this->docker_workdir . $this->docker_compose_relative_path)) {
-            throw new InvalidArgumentException("Docker compose file '{$this->docker_compose_relative_path}' does not exist in workdir '{$this->docker_workdir}'.");
-        }
-
-        $this->docker_workdir = realpath($this->docker_workdir) . DIRECTORY_SEPARATOR;
-
-        $compose_path = $this->docker_workdir . $this->docker_compose_relative_path;
-        $this->parsed_docker_compose = $this->parseDockerCompose($compose_path);
+        $this->yaml_parser_raw = $this->getYamlParser($yaml_parser);
     }
 
-    public function injectVariable(string $key, string $value): self
+    public function fromDockerCompose(string $docker_compose_full_path): DockerManager
     {
-        $this->inject_variables[$key] = $value;
+        if ($this->from_is_already_called) {
+            throw new RuntimeException("a 'from' method has already been called.");
+        }
+
+        $this->from_is_already_called = true;
+
+        $this->docker_compose_path = $this->parseDockerComposePath($docker_compose_full_path);
+        $this->docker_compose = $this->parseDockerCompose($this->docker_compose_path->toString());
+        return $this;
+    }
+
+    public function fromDockerContainerName(string $name): DockerManager
+    {
+        if ($this->from_is_already_called) {
+            throw new RuntimeException("a 'from' method has already been called.");
+        }
+
+        $this->from_is_already_called = true;
+
+        $this->name = XString::trim($name);
+        return $this;
+    }
+
+    public function fromDockerfile(string $dockerfile_path): DockerManager
+    {
+        if ($this->from_is_already_called) {
+            throw new RuntimeException("a 'from' method has already been called.");
+        }
+
+        $this->from_is_already_called = true;
+
+        $xpath = XString::trim($dockerfile_path);
+
+        if ($xpath->isEmpty()) {
+            throw new InvalidArgumentException("Dockerfile path cannot be empty.");
+        }
+
+        $xpath = $xpath->replace(['\\', '/'], DIRECTORY_SEPARATOR);
+
+        if (!is_file($xpath->toString())) {
+            throw new InvalidArgumentException("Dockerfile not found at path: {$xpath}");
+        }
+
+        $this->dockerfile_path = $xpath;
+        $this->docker_compose_path = null;
+        $this->docker_compose_dir = $xpath->before(DIRECTORY_SEPARATOR, true)->append(DIRECTORY_SEPARATOR);
 
         return $this;
     }
 
-    /**
-     * Currently only works when docker compose is in the workdir root.
-     */
-    public function run(bool $rebuild = false, bool $save_logs = false): bool
+    public function setEnvVariable(string $key, string $value): DockerManager
     {
-        // 1) Write temp compose file
-        $tmp = rtrim($this->docker_workdir, DIRECTORY_SEPARATOR)
-            . DIRECTORY_SEPARATOR . 'docker-compose-' . uniqid() . '.yml';
-        $this->writeDockerCompose($tmp);
+        $this->env_variables[$key] = $value;
+        return $this;
+    }
 
-        // 2) Detect OS + choose quoting for the -f path
-        $isWin = strtoupper(substr(PHP_OS, 0, 3)) === 'WIN';
-        $composeFileArg = $isWin ? '"' . $tmp . '"' : escapeshellarg($tmp);
-        $composeBin = $this->detectComposeBin(); // docker compose OR docker-compose
-
-        // 3) Build the command (with optional build step)
-        $composeCmd = $rebuild
-            ? $composeBin . ' -f ' . $composeFileArg . ' build --no-cache'
-                . ' && ' . $composeBin . ' -f ' . $composeFileArg . ' up -d --force-recreate --renew-anon-volumes'
-            : $composeBin . ' -f ' . $composeFileArg . ' up -d';
-
-        // 4) Prepare the log
-        $output_dir = rtrim(sys_get_temp_dir())
-            . DIRECTORY_SEPARATOR . 'tmp' . DIRECTORY_SEPARATOR;
-        if (!is_dir($output_dir)) {
-            mkdir($output_dir, 0755, true);
-        }
-        $output_file = $output_dir . 'docker-compose-' . time() . '-' . uniqid() . '.log';
-
-        // 5) Start non-blocking via proc_open (cross-platform)
-        $cmd = $isWin
-            ? 'cmd.exe /C ' . $composeCmd
-            : '/bin/sh -lc ' . escapeshellarg($composeCmd);
-
-        $descriptors = [
-            0 => ['pipe', 'r'],
-            1 => ['file', $output_file, 'a'],
-            2 => ['file', $output_file, 'a'],
-        ];
-        $options = $isWin
-            ? ['detached' => true, 'suppress_errors' => true]
-            : [];
-
-        // Build environment that includes injected variables
-        $env = $this->buildProcessEnv();
-        $cwd = $this->docker_workdir;
-
-        $proc = proc_open($cmd, $descriptors, $pipes, $cwd, $env, $options);
-        if (!is_resource($proc)) {
-            throw new \RuntimeException('Failed to start compose process.');
-        }
-        if (isset($pipes[0]) && is_resource($pipes[0])) {
-            fclose($pipes[0]);
-        }
-
-        // 6) Stream the log while the process runs
-        $last_cycle = false;
-        for ($i = 0; $i < 3000; $i++) { // ~5 minutes
-            clearstatcache(false, $output_file);
-            if (is_file($output_file)) {
-                $this->parseDockerOutput(file_get_contents($output_file));
+    public function setEnvVariables(array $vars): DockerManager
+    {
+        foreach ($vars as $key => $value) {
+            if(!is_string($key) || !is_string($value)){
+                throw new InvalidArgumentException("Environment variable keys and values must be strings.");
             }
-            $st = proc_get_status($proc);
-            if (!$st['running']) {
-                $last_cycle = true;
-            }
-            if ($last_cycle) {
-                break;
-            }
-            usleep(250000); // 0.25s
+
+            $this->setEnvVariable($key, $value);
+        }
+        return $this;
+    }
+
+    public function setDockerComposeValue(array $values): DockerManager
+    {
+        if ($this->docker_compose === null) {
+            $this->docker_compose = [];
         }
 
-        // cleanup temp compose
-        @unlink($tmp);
-        if (!$save_logs) {
-            @unlink($output_file);
-        }
+        $this->docker_compose = array_merge_recursive($this->docker_compose, $values);
+        return $this;
+    }
 
-        // 7) if docker reported errors in the build/up stage, return false
-        if (!empty($this->docker_output['errors'])) {
-            return false;
-        }
+    public function setDebugPath(?string $path): DockerManager
+    {
+        $this->debug_path = $this->parseDebugPath($path);
+        return $this;
+    }
 
-        // 8) NEW: wait for healthy containers (only those that have a healthcheck)
-        $this->waitForHealthOfServices(120); // 60s total should be plenty
-
+    public function start($rebuild_containers = false): bool
+    {
+        // Implementation of starting Docker containers goes here.
         return true;
     }
 
-    public static function isDockerRunning(): bool
+    public function stop(): bool
     {
-        $isWin = strtoupper(substr(PHP_OS, 0, 3)) === 'WIN';
-        $null = $isWin ? 'NUL' : '/dev/null';
-
-        $cmd = "docker info > {$null} 2>&1";
-
-        $exitCode = 1;
-        @exec($cmd, $out, $exitCode);
-
-        if ($exitCode === 0) {
-            return true;
-        }
-
-        $cmd = "docker ps -q > {$null} 2>&1";
-        @exec($cmd, $out, $exitCode);
-
-        return $exitCode === 0;
+        // Implementation of stopping Docker containers goes here.
+        return true;
     }
 
-    private function buildProcessEnv(): array
+    public function getErrors(): array
     {
-        $env = getenv();
-        if (!is_array($env)) {
-            $env = [];
-        }
-
-        foreach ($this->inject_variables as $key => $value) {
-            if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $key)) {
-                throw new InvalidArgumentException("Invalid environment variable name: '{$key}'.");
-            }
-            $env[$key] = (string) $value;
-        }
-
-        return $env;
+        // Implementation of error retrieval goes here.
+        return [];
     }
 
-    private function detectComposeBin(): string
+    public function hasPortInUseError(): bool
     {
-        foreach (['docker compose', 'docker-compose'] as $bin) {
-            $code = 1;
-            @exec($bin . ' version', $out, $code);
-            if ($code === 0) return $bin;
-        }
-        return 'docker-compose';
+        // Implementation to check for port in use errors goes here.
+        return false;
     }
 
-    private function parseDockerOutput(string $output): void
-    {
-        $lines = explode("\n", $output);
-        $builds = [
-            'containers' => [],
-            'networks' => [],
-            'build_status' => '',
-            'errors' => [],
-        ];
-
-        foreach ($lines as $line) {
-            $line = trim($line);
-            if ($line === '') {
-                continue;
-            }
-
-            $line = XString::new($line);
-
-            if ($line->trim()->startsWith('Network ')) {
-                $name = (string) $line->between(' ', ' ')->trim();
-                $status = (string) $line->trim()->after($name, true)->trim();
-                $builds['networks'][$name] = $status;
-                continue;
-            } elseif ($line->trim()->startsWith('Container ')) {
-                $name = (string) $line->between(' ', ' ')->trim();
-                $status = (string) $line->trim()->after($name, true)->trim();
-                $builds['containers'][$name] = $status;
-                continue;
-            } elseif ($line->trim()->startsWith(XStringType::regex('/^#[0-9]+[ ]/'))) {
-                $status = (string) $line->trim();
-                $builds['build_status'] = $status;
-                continue;
-            } elseif ($line->trim()->startsWith('Error ')) {
-                $error = (string) $line->trim();
-                $builds['errors'][] = $error;
-                continue;
-            }
-        }
-
-        if (is_callable($this->progress_callback)) {
-            call_user_func($this->progress_callback, $builds);
-        }
-
-        $this->docker_output = $builds;
-    }
+    ##############
+    ## Internal ##
+    ##############
 
     private function parseDockerCompose(string $compose_path): array
     {
-        switch ($this->yaml_parser) {
+        switch ($this->yaml_parser_raw) {
             case 'ext':
                 if (!function_exists('yaml_parse_file')) {
                     throw new RuntimeException('ext-yaml is required when using the "ext" YAML parser option.');
                 }
+                /** @disregard P1010 yaml_emit_file comes from optional ext-yaml */
                 $parsed = yaml_parse_file($compose_path);
                 break;
             case 'symfony':
+                /** @disregard P1009 Symfony\\Component\\Yaml\\Yaml is an optional dependency */
                 if (!class_exists(\Symfony\Component\Yaml\Yaml::class)) {
                     throw new RuntimeException('symfony/yaml must be installed to use the "symfony" YAML parser option.');
                 }
+                /** @disregard P1009 Symfony\\Component\\Yaml\\Yaml is an optional dependency */
                 $parsed = \Symfony\Component\Yaml\Yaml::parseFile($compose_path);
                 break;
             default:
@@ -259,131 +185,60 @@ class DockerManager
         return $parsed;
     }
 
-    private function writeDockerCompose(string $target_path): void
+    private function getYamlParser(string $yaml_parser): string
     {
-        switch ($this->yaml_parser) {
-            case 'ext':
-                if (!function_exists('yaml_emit_file')) {
-                    throw new RuntimeException('ext-yaml is required when using the "ext" YAML parser option.');
-                }
-                $result = yaml_emit_file($target_path, $this->parsed_docker_compose);
-                if ($result === false) {
-                    throw new RuntimeException('Failed to write temporary docker compose file.');
-                }
-                return;
-            case 'symfony':
-                if (!class_exists(\Symfony\Component\Yaml\Yaml::class)) {
-                    throw new RuntimeException('symfony/yaml must be installed to use the "symfony" YAML parser option.');
-                }
-                $yaml = \Symfony\Component\Yaml\Yaml::dump($this->parsed_docker_compose, 10, 2);
-                if (file_put_contents($target_path, $yaml) === false) {
-                    throw new RuntimeException('Failed to write temporary docker compose file.');
-                }
-                return;
+        $parser = XString::trim($yaml_parser)->toLowerCase();
+
+        if ($parser->isEmpty() || $parser->equals('ext')) {
+            if (!extension_loaded('yaml')) {
+                throw new RuntimeException("YAML extension is not loaded. Please install/enable the YAML PHP extension.");
+            }
+            return 'ext';
         }
 
-        throw new RuntimeException('Unsupported YAML parser.');
+        if ($parser->equals('symfony')) {
+            if (!class_exists('\Symfony\Component\Yaml\Yaml')) {
+                throw new RuntimeException("Symfony YAML component is not installed. Please install it via Composer.");
+            }
+            return 'symfony';
+        }
+
+        throw new InvalidArgumentException("Unsupported YAML parser specified: {$parser}, supported: 'ext', 'symfony'.");
     }
 
-    public function getErrors(): array
+    private function parseDockerComposePath(string $path): XString
     {
-        return $this->docker_output['errors'] ?? [];
+        $xpath = XString::trim($path);
+
+        if($xpath->isEmpty()){
+            throw new InvalidArgumentException("Docker compose path cannot be empty.");
+        }
+
+        $xpath = $xpath->replace(['\\', '/'], DIRECTORY_SEPARATOR);
+
+        if(!is_file($xpath->toString())){
+            throw new InvalidArgumentException("Docker compose file not found at path: {$xpath}");
+        }
+
+        $this->docker_compose_dir = $xpath->before(DIRECTORY_SEPARATOR, true)->append(DIRECTORY_SEPARATOR);
+
+        return $xpath;
     }
 
-    public function onProgress(?callable $callback = null): self
+    public function parseDebugPath(?string $path): ?XString
     {
-        $this->progress_callback = $callback;
-        return $this;
-    }
-
-    public function hasPortInUseError(): bool
-    {
-        foreach ($this->docker_output['errors'] ?? [] as $error) {
-            $x = XString::new($error);
-            if ($x->trim()->endsWith('failed: port is already allocated')) {
-                return true;
-            } elseif ($x->contains('address already in use')) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    public function setName(string $name): self
-    {
-        if (empty($name)) {
-            throw new InvalidArgumentException('Container name cannot be empty.');
+        if($path === null){
+            return null;
         }
 
-        $this->parsed_docker_compose['name'] = $name;
+        $xpath = XString::trim($path);
 
-        if (isset($this->parsed_docker_compose['services']) && is_array($this->parsed_docker_compose['services'])) {
-            foreach ($this->parsed_docker_compose['services'] as $service => &$config) {
-                if (is_array($config)) {
-                    // e.g. dev-index3-mysql-mysql
-                    $config['container_name'] = $name . '-' . $service;
-                }
-            }
-            unset($config);
+        if($xpath->isEmpty()){
+            return null;
         }
 
-        return $this;
-    }
+        $xpath = $xpath->replace(['\\', '/'], DIRECTORY_SEPARATOR);
 
-    /**
-     * Waits until all services that define a healthcheck are healthy.
-     */
-    private function waitForHealthOfServices(int $timeoutSeconds): void
-    {
-        if (!isset($this->parsed_docker_compose['services']) || !is_array($this->parsed_docker_compose['services'])) {
-            return;
-        }
-
-        $containersToWatch = [];
-        foreach ($this->parsed_docker_compose['services'] as $serviceName => $serviceConf) {
-            if (!is_array($serviceConf)) {
-                continue;
-            }
-            if (!isset($serviceConf['healthcheck'])) {
-                continue;
-            }
-            // container_name is guaranteed in setName()
-            $containerName = $serviceConf['container_name'] ?? null;
-            if ($containerName) {
-                $containersToWatch[] = $containerName;
-            }
-        }
-
-        if (!$containersToWatch) {
-            return; // nothing to wait for
-        }
-
-        $isWin = strtoupper(substr(PHP_OS, 0, 3)) === 'WIN';
-        $start = time();
-
-        foreach ($containersToWatch as $container) {
-            while (true) {
-                $cmd = $isWin
-                    ? 'docker inspect -f "{{.State.Health.Status}}" ' . $container
-                    : 'docker inspect -f "{{.State.Health.Status}}" ' . escapeshellarg($container);
-
-                $output = [];
-                $exitCode = 0;
-                exec($cmd, $output, $exitCode);
-
-                if ($exitCode === 0 && isset($output[0])) {
-                    $status = trim($output[0], " \t\n\r\"");
-                    if ($status === 'healthy') {
-                        break;
-                    }
-                }
-
-                if ((time() - $start) >= $timeoutSeconds) {
-                    throw new \RuntimeException("Container '{$container}' did not become healthy in {$timeoutSeconds} seconds.");
-                }
-
-                usleep(500_000); // 0.5s
-            }
-        }
+        return $xpath;
     }
 }

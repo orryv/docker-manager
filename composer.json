@@ -16,7 +16,8 @@
     ],
     "require": {
         "orryv/x-string": "^1.0",
-        "orryv/tools": "^1.0"
+        "orryv/tools": "^1.0",
+        "orryv/path": "v3.x-dev"
     },
     "suggest": {
         "ext-yaml": "Required for the default YAML parser implementation.",
