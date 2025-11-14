@@ -16,14 +16,11 @@ class Helper
         $tmp_port = $port instanceof FindNextPort
             ? $port->getAvailablePort()
             : $port;
-        $dm = new DockerManager($workdir, $compose_path)
-            ->setName($name)
-            ->injectVariable('HOST_PORT', $tmp_port)
-            ->onProgress(function($builds){
-                $line = '  ';
-                $in_progress = false;
-                foreach($builds['containers'] ?? [] as $name => $status) {
-                    $line .= "{$name}: {$status} | ";
+        $progressCallback = function($builds){
+            $line = '  ';
+            $in_progress = false;
+            foreach($builds['containers'] ?? [] as $name => $status) {
+                $line .= "{$name}: {$status} | ";
 
                     if($status !== 'Started' && $status !== 'Running'){
                         $in_progress = true;
@@ -51,8 +48,13 @@ class Helper
                     $line .= $b->trim()->limit(50, '...');
                 }
 
-                Cmd::updateLive(0, $line);
-            });
+            Cmd::updateLive(0, $line);
+        };
+
+        $dm = new DockerManager($workdir, $compose_path)
+            ->setName($name)
+            ->injectVariable('HOST_PORT', $tmp_port)
+            ->onProgress($progressCallback);
 
         foreach($vars as $key => $value){
             $dm->injectVariable($key, $value);
@@ -68,7 +70,7 @@ class Helper
                     $tmp_port = $port->getAvailablePort($tmp_port);
                     Cmd::updateLive(0, "Failed previous port, trying " . $tmp_port . "...");
                     $dm->injectVariable('HOST_PORT', $tmp_port)
-                        ->onProgress(null);
+                        ->onProgress($progressCallback);
                     $success = $dm->run();
                     if(!$success && !$dm->hasPortInUseError()){
                         print_r($dm->getErrors());
