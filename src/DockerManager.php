@@ -717,6 +717,7 @@ class DockerManager
 
                 $contextPath = $this->resolveComposePath($buildContext, $baseDir);
                 $this->assertBuildContextDirectoryExists($serviceName, $buildContext, $contextPath);
+                $this->assertDefaultDockerfileExists($serviceName, $buildContext, $contextPath);
                 $service['build'] = $contextPath;
                 continue;
             }
@@ -738,15 +739,19 @@ class DockerManager
                 $build['context'] = $contextPath;
             }
 
-            if (
-                $contextPath !== null
-                && isset($build['dockerfile'])
-                && is_string($build['dockerfile'])
-                && $build['dockerfile'] !== ''
-                && !$this->containsComposeVariable($build['dockerfile'])
-            ) {
-                $dockerfilePath = $this->resolveComposePath($build['dockerfile'], $contextPath);
-                $this->assertDockerfileExists($serviceName, $build['dockerfile'], $dockerfilePath, $contextPath);
+            if ($contextPath !== null) {
+                $dockerfileValue = $build['dockerfile'] ?? null;
+                if (
+                    is_string($dockerfileValue)
+                    && $dockerfileValue !== ''
+                    && !$this->containsComposeVariable($dockerfileValue)
+                ) {
+                    $dockerfilePath = $this->resolveComposePath($dockerfileValue, $contextPath);
+                    $this->assertDockerfileExists($serviceName, $dockerfileValue, $dockerfilePath, $contextPath);
+                } elseif (!is_string($dockerfileValue) || trim($dockerfileValue) === '') {
+                    $declaredContext = is_string($contextValue) ? $contextValue : '.';
+                    $this->assertDefaultDockerfileExists($serviceName, $declaredContext, $contextPath);
+                }
             }
 
             $service['build'] = $build;
@@ -828,6 +833,22 @@ class DockerManager
             $declared,
             $contextPath,
             $resolved
+        ));
+    }
+
+    private function assertDefaultDockerfileExists(string $service, string $declaredContext, string $resolvedContext): void
+    {
+        $expected = rtrim($resolvedContext, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'Dockerfile';
+        if (is_file($expected)) {
+            return;
+        }
+
+        throw new RuntimeException(sprintf(
+            'Service "%s" dockerfile not found. Declared build context "%s" resolved to "%s" but default dockerfile expected at "%s".',
+            $service,
+            $declaredContext,
+            $resolvedContext,
+            $expected
         ));
     }
 

@@ -119,6 +119,37 @@ class DockerManagerTest extends TestCase
         }
     }
 
+    public function testStartFailsWhenDefaultDockerfileMissing(): void
+    {
+        $runner = new FakeProcessRunner();
+        $temporaryContext = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'docker-manager-missing-default-dockerfile-' . uniqid('', true);
+        if (!mkdir($temporaryContext) && !is_dir($temporaryContext)) {
+            $this->fail('Unable to create temporary context directory for test.');
+        }
+
+        try {
+            $manager = (new DockerManager('symfony'))
+                ->fromDockerCompose($this->composePath)
+                ->updateService('storyteller', [
+                    'build' => $temporaryContext,
+                    'healthcheck' => null,
+                ])
+                ->setProcessRunner($runner);
+
+            $this->expectException(RuntimeException::class);
+            $this->expectExceptionMessage('default dockerfile expected');
+
+            try {
+                $manager->start();
+            } catch (RuntimeException $exception) {
+                $this->assertSame([], $runner->commands);
+                throw $exception;
+            }
+        } finally {
+            @rmdir($temporaryContext);
+        }
+    }
+
     public function testStopFromContainerName(): void
     {
         $runner = new FakeProcessRunner();
