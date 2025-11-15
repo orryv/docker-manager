@@ -1,85 +1,99 @@
-<?php 
+<?php
 
 namespace Orryv\DockerManager;
 
-use Orryv\DockerManager\Ports\FindNextPort;
 use Orryv\Cmd;
 use Orryv\DockerManager;
+use Orryv\DockerManager\Ports\FindNextPort;
 use Orryv\XString;
 use Orryv\XStringType;
 
 class Helper
 {
-    public static function startContainer($name, $workdir, $compose_path, int|FindNextPort $port, $build_containers, $save_logs, $vars = []): int
-    {
+    public static function startContainer(
+        string $name,
+        string $workdir,
+        string $compose_path,
+        int|FindNextPort $port,
+        bool $build_containers,
+        bool $save_logs,
+        array $vars = []
+    ): int {
         Cmd::beginLive(1);
+
         $tmp_port = $port instanceof FindNextPort
             ? $port->getAvailablePort()
             : $port;
-        $dm = new DockerManager($workdir, $compose_path)
-            ->setName($name)
-            ->injectVariable('HOST_PORT', $tmp_port)
-            ->onProgress(function($builds){
-                $line = '  ';
-                $in_progress = false;
-                foreach($builds['containers'] ?? [] as $name => $status) {
-                    $line .= "{$name}: {$status} | ";
 
-                    if($status !== 'Started' && $status !== 'Running'){
-                        $in_progress = true;
+        $composeFullPath = rtrim($workdir, DIRECTORY_SEPARATOR)
+            . DIRECTORY_SEPARATOR
+            . ltrim($compose_path, DIRECTORY_SEPARATOR);
+
+        $manager = (new DockerManager())
+            ->fromDockerCompose($composeFullPath)
+            ->setName($name)
+            ->onProgress(static function (array $builds): void {
+                $line = '  ';
+                $inProgress = false;
+
+                foreach ($builds['containers'] ?? [] as $container => $status) {
+                    $line .= "{$container}: {$status} | ";
+                    if ($status !== 'Started' && $status !== 'Running') {
+                        $inProgress = true;
                     }
                 }
 
-                if(!empty($builds['containers']) && !$in_progress){
-                    Cmd::updateLive(0, "  Starting up container...");
+                if (!empty($builds['containers']) && !$inProgress) {
+                    Cmd::updateLive(0, '  Starting up container...');
                     return;
                 }
 
-                if(!empty($line)){
+                if (!empty($line)) {
                     $line .= '=> ';
                 }
-                
-                // Create status
-                $b = XString::new($builds['build_status'] ?? '');
-                // if it matches ^#[int] \[int/int\]
-                if($b->contains(XStringType::regex('/^#[0-9]+[ ]\[[0-9]+\/[0-9]+\]/'))){
-                    // extract
-                    $progress = $b->match(XStringType::regex('/^#[0-9]+[ ]\[[0-9]+\/[0-9]+\]/'));
+
+                $status = XString::new($builds['build_status'] ?? '');
+                if ($status->contains(XStringType::regex('/^#[0-9]+[ ]\[[0-9]+\/[0-9]+\]/'))) {
+                    $progress = $status->match(XStringType::regex('/^#[0-9]+[ ]\[[0-9]+\/[0-9]+\]/'));
                     $line .= $progress;
                 } else {
-                    // limit length to 25 chars and add ellipsis if longer
-                    $line .= $b->trim()->limit(50, '...');
+                    $line .= $status->trim()->limit(50, '...');
                 }
 
                 Cmd::updateLive(0, $line);
-            });
+            })
+            ->setEnvVariable('HOST_PORT', (string) $tmp_port);
 
-        foreach($vars as $key => $value){
-            $dm->injectVariable($key, $value);
+        foreach ($vars as $key => $value) {
+            if (!is_string($key) || !is_string($value)) {
+                throw new \InvalidArgumentException('Environment variable keys and values must be strings.');
+            }
+            $manager->setEnvVariable($key, $value);
         }
-        $success = $dm->run($build_containers, $save_logs);
+
+        $success = $manager->start($build_containers, $save_logs);
 
         Cmd::finishLive();
 
-        if(!$success){
-            if($dm->hasPortInUseError() && $port instanceof FindNextPort){
+        if (!$success) {
+            if ($manager->hasPortInUseError() && $port instanceof FindNextPort) {
                 Cmd::beginLive(1);
-                do{
+                do {
                     $tmp_port = $port->getAvailablePort($tmp_port);
-                    Cmd::updateLive(0, "Failed previous port, trying " . $tmp_port . "...");
-                    $dm->injectVariable('HOST_PORT', $tmp_port)
+                    Cmd::updateLive(0, 'Failed previous port, trying ' . $tmp_port . '...');
+                    $manager->setEnvVariable('HOST_PORT', (string) $tmp_port)
                         ->onProgress(null);
-                    $success = $dm->run();
-                    if(!$success && !$dm->hasPortInUseError()){
-                        print_r($dm->getErrors());
-                        throw new \Exception("Failed to start Docker containers for unknown reason (see above).");
+                    $success = $manager->start($build_containers, $save_logs);
+                    if (!$success && !$manager->hasPortInUseError()) {
+                        print_r($manager->getErrors());
+                        throw new \RuntimeException('Failed to start Docker containers for unknown reason (see above).');
                     }
-                } while(!$success);
+                } while (!$success);
                 Cmd::finishLive();
             } else {
-                echo "Failed to start Docker containers." . PHP_EOL;
-                print_r($dm->getErrors());
-                throw new \Exception("Failed to start Docker containers for unknown reason (see above).");
+                echo 'Failed to start Docker containers.' . PHP_EOL;
+                print_r($manager->getErrors());
+                throw new \RuntimeException('Failed to start Docker containers for unknown reason (see above).');
             }
         }
 

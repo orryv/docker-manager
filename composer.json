@@ -7,7 +7,8 @@
         }
     },
     "require-dev": {
-        "phpunit/phpunit": "^11.4"
+        "phpunit/phpunit": "^11.4",
+        "symfony/yaml": "^7.0"
     },
     "authors": [
         {
@@ -22,5 +23,10 @@
     "suggest": {
         "ext-yaml": "Required for the default YAML parser implementation.",
         "symfony/yaml": "Provides a pure PHP YAML parser alternative."
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Tests\\": "tests/"
+        }
     }
 }
