@@ -23,7 +23,7 @@ public function getLastExitCode(): ?int
 
 - Keep track of all the temporary files we create (docker-compose overrides, dockerfiles, logs, etc) and provide a method to clean them up (best in __destruct)
 
-- Also implement "helper" methods like (but not limited to, I'm sure you can think of way more we can implement):
+- Also implement "helper" methods which update docker-compose values, like (but not limited to, I'm sure you can think of way more we can implement):
 setName($name) // the name above the services (to group them)
 setContainerName($target_service, $name)
 setServiceName($target_service, $name)
@@ -32,7 +32,14 @@ setCpus($target_service, $cpus)
 setMemoryLimit($target_service, $memory_limit)
 setEnvironmentVariable($target_service, $key, $value) 
 
-Note: in these helper methods we need to set which service we are targeting in the docker-compose file. 
+Note: in these helper methods we need to set which service we are targeting in the docker-compose file.
+
+- Also think of other helpful methods, I'm thinking about:
+usesHostPorts(): ?array // returns a list of host ports used by the container (if any)
+usesContainerPorts(): ?array // returns a list of container ports used by the container (if any)
+usesPorts(): ?array // returns an associative array of host_port => container_port
+getErrors(): array // returns an array of errors encountered during the last run (see DockerManagerOld.php to see how we should collect the errors)
+
 
 
 */
