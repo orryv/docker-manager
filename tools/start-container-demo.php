@@ -3,7 +3,7 @@
 
 declare(strict_types=1);
 
-use Orryv\DockerManager\FindNextPort;
+use Orryv\DockerManager\Ports\FindNextPort;
 use Orryv\DockerManager\Helper;
 
 // Try to locate Composer's autoloader from several common paths.
@@ -30,6 +30,8 @@ if ($fixtureDir === false) {
     fwrite(STDERR, "Unable to resolve fixture directory for the startContainer demo." . PHP_EOL);
     exit(1);
 }
+
+echo "Starting demo container using DockerManager helper..." . PHP_EOL;
 
 $portFinder = new FindNextPort([8080, 8081], 9000, 9200);
 
