@@ -21,7 +21,7 @@ public function getName(): ?string
 public function getLastOutput(): ?string
 public function getLastExitCode(): ?int
 
-- Keep track of all the temporary files we create (docker-compose overrides, dockerfiles, logs, etc) and provide a method to clean them up (best in __destruct)
+- Keep track of all the temporary files we create (docker-compose overrides (if any), dockerfiles (if any), logs, etc) and provide a method to clean them up (best in __destruct)
 
 - Also implement "helper" methods which update docker-compose values, like (but not limited to, I'm sure you can think of way more we can implement):
 setName($name) // the name above the services (to group them)
