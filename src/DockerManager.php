@@ -198,7 +198,7 @@ class DockerManager
             $this->cleanupLogFile($result->getLogFilePath(), $save_logs);
 
             if ($this->last_exit_code !== 0 && empty($this->docker_output['errors'])) {
-                $this->docker_output['errors'][] = $this->formatFallbackError($command);
+                $this->docker_output['errors'][] = $this->formatFallbackError($command, $context, $result, $composePath);
             }
 
             if (!empty($this->docker_output['errors'])) {
@@ -530,10 +530,25 @@ class DockerManager
         return (string) file_get_contents($logPath);
     }
 
-    private function formatFallbackError(string $command): string
+    private function formatFallbackError(string $command, ProcessContext $context, ProcessResult $result, ?string $composePath = null): string
     {
-        $exitCode = $this->last_exit_code ?? -1;
-        $message = sprintf('Docker compose command "%s" exited with code %d.', $command, $exitCode);
+        $exitCode = $this->last_exit_code ?? $result->getExitCode() ?? -1;
+        $workingDir = $context->getWorkingDirectory();
+        $message = sprintf(
+            'Docker compose command "%s" exited with code %d while running in "%s".',
+            $command,
+            $exitCode,
+            $workingDir
+        );
+
+        if ($composePath !== null) {
+            $message .= ' Temporary compose file: ' . $composePath . '.';
+        }
+
+        $logPath = $result->getLogFilePath();
+        if ($logPath !== null) {
+            $message .= ' Captured log file: ' . $logPath . '.';
+        }
 
         $summary = $this->summarizeOutputForError($this->last_output);
         if ($summary !== null) {
@@ -811,6 +826,10 @@ class DockerManager
         $workingDir = $this->docker_compose_dir?->toString();
         if ($workingDir === null) {
             $workingDir = getcwd() ?: '.';
+        }
+
+        if (!is_dir($workingDir)) {
+            throw new RuntimeException(sprintf('Docker compose working directory does not exist: %s', $workingDir));
         }
 
         return new ProcessContext(

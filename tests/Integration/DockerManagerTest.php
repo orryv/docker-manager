@@ -95,4 +95,30 @@ class DockerManagerTest extends TestCase
         $this->assertNotEmpty($manager->getErrors());
         $this->assertTrue($manager->hasPortInUseError());
     }
+
+    public function testStartProvidesContextWhenFallbackErrorGenerated(): void
+    {
+        $logs = [
+            "The system cannot find the path specified.\n",
+        ];
+        $runner = new FakeProcessRunner($logs, exitCode: 17);
+
+        $manager = (new DockerManager('symfony'))
+            ->fromDockerCompose($this->composePath)
+            ->updateService('storyteller', ['healthcheck' => null])
+            ->setProcessRunner($runner);
+
+        $success = $manager->start();
+
+        $this->assertFalse($success);
+        $errors = $manager->getErrors();
+        $this->assertNotEmpty($errors);
+        $errorMessage = $errors[0];
+
+        $this->assertStringContainsString('running in', $errorMessage);
+        $this->assertStringContainsString(dirname($this->composePath), $errorMessage);
+        $this->assertStringContainsString('Temporary compose file:', $errorMessage);
+        $this->assertStringContainsString('Captured log file:', $errorMessage);
+        $this->assertStringContainsString('Last output: The system cannot find the path specified.', $errorMessage);
+    }
 }
