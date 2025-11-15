@@ -39,7 +39,7 @@ usesHostPorts(): ?array // returns a list of host ports used by the container (i
 usesContainerPorts(): ?array // returns a list of container ports used by the container (if any)
 usesPorts(): ?array // returns an associative array of host_port => container_port
 getErrors(): array // returns an array of errors encountered during the last run (see DockerManagerOld.php to see how we should collect the errors)
-
+Which helpful methods do you think about? implement them?
 
 
 */
