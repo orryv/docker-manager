@@ -83,7 +83,7 @@ remove(
     bool $remove_volumes = false, 
     ?string $remove_images = null, // 'all', 'local', null
 ): bool
-reset(
+restart(
     string|array|null $id = null, 
     ?string $service_name = null,
     bool $rebuild_containers = false,
