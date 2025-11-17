@@ -22,40 +22,42 @@ class DockerOutputParser
      */
     public function parse(string $content): array
     {
-        $trimmed = trim($content);
-        $lines = $trimmed === '' ? [] : preg_split('/\r?\n/', $trimmed);
-        if (!is_array($lines)) {
-            $lines = [];
+        $rawLines = preg_split('/\r?\n/', $content);
+        if (!is_array($rawLines)) {
+            $rawLines = [];
         }
 
         $containers = [];
         $networks = [];
         $buildStatus = '';
         $errors = [];
+        $normalizedLines = [];
 
-        foreach ($lines as $line) {
-            $line = trim($line);
+        foreach ($rawLines as $rawLine) {
+            $line = trim((string) $rawLine);
             if ($line === '') {
                 continue;
             }
 
-            if (stripos($line, 'error ') === 0 || stripos($line, 'error:') === 0) {
-                $errors[] = $line;
-                continue;
-            }
+            $normalizedLines[] = $line;
 
-            if (preg_match('/^Network\s+(?P<name>[^\s]+)\s+(?P<status>.+)$/i', $line, $matches)) {
+            if (stripos($line, 'Network ') === 0 && preg_match('/^Network\s+(?P<name>[^\s]+)\s+(?P<status>.+)$/i', $line, $matches)) {
                 $networks[$matches['name']] = trim($matches['status']);
                 continue;
             }
 
-            if (preg_match('/^Container\s+(?P<name>[^\s]+)\s+(?P<status>.+)$/i', $line, $matches)) {
+            if (stripos($line, 'Container ') === 0 && preg_match('/^Container\s+(?P<name>[^\s]+)\s+(?P<status>.+)$/i', $line, $matches)) {
                 $containers[$matches['name']] = trim($matches['status']);
                 continue;
             }
 
-            if ($buildStatus === '' && preg_match('/^#[0-9]+\s+/', $line)) {
+            if (preg_match('/^#[0-9]+\s+/', $line)) {
                 $buildStatus = $line;
+                continue;
+            }
+
+            if (stripos($line, 'Error ') === 0 || stripos($line, 'Error:') === 0) {
+                $errors[] = $line;
             }
         }
 
@@ -64,7 +66,7 @@ class DockerOutputParser
             'networks' => $networks,
             'build_status' => $buildStatus,
             'errors' => $errors,
-            'lines' => $lines,
+            'lines' => $normalizedLines,
         ];
     }
 }
