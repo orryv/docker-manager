@@ -3,7 +3,7 @@
 
 declare(strict_types=1);
 
-use Orryv\DockerManager\FindNextPort;
+use Orryv\DockerManager\Ports\FindNextPort;
 use Orryv\DockerManager\Helper;
 
 // Try to locate Composer's autoloader from several common paths.

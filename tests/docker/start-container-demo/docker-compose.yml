@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   storyteller:
     container_name: docker-manager-start-container-demo
