@@ -188,7 +188,7 @@ class DockerComposeConfig
     /**
      * Register a callback invoked while docker compose streams its log output.
      *
-     * @param callable $callback Signature: function(string $id, string $line): void
+     * @param callable $callback Signature: function(string $id, array $progress, string $operation): void
      * @param int $intervalMs Minimum interval between callback invocations.
      */
     public function onProgress(callable $callback, int $intervalMs = 250): self

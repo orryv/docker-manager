@@ -162,14 +162,61 @@ class Helper
     {
         $containers = [];
         $lastMessage = '';
-        $config->onProgress(function (string $configId, array $events) use (&$containers, &$lastMessage) {
-            if (empty($events)) {
+        $config->onProgress(function (string $configId, array $payload) use (&$containers, &$lastMessage) {
+            if (self::isAggregatedProgressPayload($payload)) {
+                $containers = $payload['containers'] ?? [];
+                $lines = $payload['lines'] ?? [];
+                $latestLine = '';
+                if (!empty($lines)) {
+                    $latestLine = (string) end($lines);
+                    reset($lines);
+                }
+                $lastMessage = $payload['build_status']
+                    ?: $latestLine
+                    ?: $lastMessage;
+
+                $line = '  ';
+                $inProgress = false;
+                foreach ($containers as $container => $status) {
+                    $line .= $container . ': ' . $status . ' | ';
+                    if (!in_array(strtolower($status), ['started', 'running', 'healthy'], true)) {
+                        $inProgress = true;
+                    }
+                }
+
+                if (!empty($containers) && !$inProgress) {
+                    Cmd::updateLive(0, '  Starting up container...');
+                    return;
+                }
+
+                if ($line !== '  ') {
+                    $line .= '=> ';
+                }
+
+                $message = $lastMessage !== ''
+                    ? XString::new($lastMessage)
+                    : XString::new('Waiting for docker compose...');
+
+                if ($message->contains(XStringType::regex('/^#[0-9]+[ ]\[[0-9]+\/[0-9]+\]/'))) {
+                    $progress = $message->match(XStringType::regex('/^#[0-9]+[ ]\[[0-9]+\/[0-9]+\]/'));
+                    $line .= (string) $progress;
+                } else {
+                    $line .= $message->trim()->limit(50, '...');
+                }
+
+                Cmd::updateLive(0, $line);
+
+                return;
+            }
+
+            if (empty($payload)) {
                 $containers = [];
                 $lastMessage = '';
                 Cmd::updateLive(0, '  Starting up container...');
                 return;
             }
-            foreach ($events as $event) {
+
+            foreach ($payload as $event) {
                 $container = $event['container'] ?? null;
                 if ($container) {
                     $containers[$container] = ucfirst($event['status'] ?? '');
@@ -205,6 +252,14 @@ class Helper
 
             Cmd::updateLive(0, $line);
         });
+    }
+
+    /**
+     * @param array<int|string,mixed> $payload
+     */
+    private static function isAggregatedProgressPayload(array $payload): bool
+    {
+        return isset($payload['containers']) || isset($payload['networks']) || array_key_exists('build_status', $payload);
     }
 
     /**

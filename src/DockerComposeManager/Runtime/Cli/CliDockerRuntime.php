@@ -245,8 +245,8 @@ class CliDockerRuntime implements DockerRuntimeInterface
             usleep($this->pollIntervalMs * 1000);
         }
 
-        $states = $waitForHealth && $options->requireHealthy
-            ? $this->waitForHealth($configs, $options->healthTimeout)
+        $states = $waitForHealth
+            ? $this->waitForReadiness($configs, $options->healthTimeout, $options->requireHealthy)
             : $this->describe($configs);
 
         foreach ($states as $id => $state) {
@@ -271,9 +271,7 @@ class CliDockerRuntime implements DockerRuntimeInterface
         if ($logContent === false) {
             return;
         }
-        $parsed = $logContent === ''
-            ? ['events' => [], 'errors' => [], 'lines' => []]
-            : $this->parser->parse($logContent);
+        $parsed = $this->parser->parse($logContent);
         if (!empty($parsed['errors'])) {
             $errors[$id] = array_values(array_unique(array_merge($errors[$id] ?? [], $parsed['errors'])));
         }
@@ -282,7 +280,7 @@ class CliDockerRuntime implements DockerRuntimeInterface
             [$callback, $interval] = $progress;
             $now = microtime(true);
             if ($now - $handle['last_progress'] >= ($interval / 1000)) {
-                $callback($id, $parsed['events'], $operation);
+                $callback($id, $parsed, $operation);
                 $handle['last_progress'] = $now;
             }
         }
@@ -301,7 +299,7 @@ class CliDockerRuntime implements DockerRuntimeInterface
         }
 
         [$callback, $interval] = $progress;
-        $callback($id, [], $operation);
+        $callback($id, $this->emptyProgressPayload(), $operation);
         $handle['last_progress'] = microtime(true);
     }
 
@@ -313,14 +311,17 @@ class CliDockerRuntime implements DockerRuntimeInterface
     private function startProcess(CommandDefinition $definition, string $logFile)
     {
         $isWin = strtoupper(substr(PHP_OS, 0, 3)) === 'WIN';
-        $command = $isWin ? 'cmd.exe /C ' . $definition->command : $definition->command;
+        $wrappedCommand = $isWin
+            ? 'cmd.exe /C ' . $definition->command
+            : '/bin/sh -c ' . escapeshellarg($definition->command);
         $descriptors = [
             0 => ['pipe', 'r'],
             1 => ['file', $logFile, 'a'],
             2 => ['file', $logFile, 'a'],
         ];
         $env = array_merge($this->getProcessEnv(), $definition->environment);
-        $proc = proc_open($command, $descriptors, $pipes, $definition->workingDirectory, $env);
+        $options = $isWin ? ['detached' => true, 'suppress_errors' => true] : [];
+        $proc = proc_open($wrappedCommand, $descriptors, $pipes, $definition->workingDirectory, $env, $options);
         if (!is_resource($proc)) {
             throw new RuntimeException('Failed to start docker compose process.');
         }
@@ -373,26 +374,62 @@ class CliDockerRuntime implements DockerRuntimeInterface
      *
      * @return array<string,ContainerState>
      */
-    private function waitForHealth(array $configs, int $timeout): array
+    private function waitForReadiness(array $configs, int $timeout, bool $requireHealthy): array
     {
-        $deadline = microtime(true) + $timeout;
+        $deadline = microtime(true) + max(1, $timeout);
         $states = [];
         do {
             $states = $this->describe($configs);
-            $allHealthy = true;
-            foreach ($states as $state) {
-                if (!$state->isRunning() || !$state->isHealthy()) {
-                    $allHealthy = false;
-                    break;
-                }
-            }
-            if ($allHealthy) {
+            if ($this->statesAreReady($states, $requireHealthy)) {
                 break;
             }
             usleep($this->pollIntervalMs * 1000);
         } while (microtime(true) < $deadline);
 
         return $states;
+    }
+
+    /**
+     * @param array<string,ContainerState> $states
+     */
+    private function statesAreReady(array $states, bool $requireHealthy): bool
+    {
+        if (empty($states)) {
+            return false;
+        }
+
+        foreach ($states as $state) {
+            if (!$state->isRunning()) {
+                return false;
+            }
+            if ($requireHealthy && !$state->isHealthy()) {
+                return false;
+            }
+            if (!$requireHealthy) {
+                foreach ($state->getServices() as $serviceState) {
+                    $normalized = strtolower((string) $serviceState);
+                    if (!in_array($normalized, ['running', 'started', 'starting', 'healthy', 'up'], true)) {
+                        return false;
+                    }
+                }
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @return array{containers:array<string,string>,networks:array<string,string>,build_status:string,errors:array<int,string>,lines:array<int,string>}
+     */
+    private function emptyProgressPayload(): array
+    {
+        return [
+            'containers' => [],
+            'networks' => [],
+            'build_status' => '',
+            'errors' => [],
+            'lines' => [],
+        ];
     }
 
     /**

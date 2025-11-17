@@ -9,35 +9,60 @@ namespace Orryv\DockerComposeManager\Runtime\Cli;
 class DockerOutputParser
 {
     /**
-     * @return array{events:array<int,array<string,string>>,errors:array<int,string>,lines:array<int,string>}
-     */
-    /**
-     * Split compose logs into normalized events and error lines.
+     * Parse docker compose output and return aggregated progress data similar to
+     * the legacy DockerManager implementation.
+     *
+     * @return array{
+     *     containers:array<string,string>,
+     *     networks:array<string,string>,
+     *     build_status:string,
+     *     errors:array<int,string>,
+     *     lines:array<int,string>
+     * }
      */
     public function parse(string $content): array
     {
-        $lines = preg_split('/\r?\n/', trim($content)) ?: [];
-        $events = [];
+        $trimmed = trim($content);
+        $lines = $trimmed === '' ? [] : preg_split('/\r?\n/', $trimmed);
+        if (!is_array($lines)) {
+            $lines = [];
+        }
+
+        $containers = [];
+        $networks = [];
+        $buildStatus = '';
         $errors = [];
+
         foreach ($lines as $line) {
             $line = trim($line);
             if ($line === '') {
                 continue;
             }
-            if (stripos($line, 'error') !== false) {
+
+            if (stripos($line, 'error ') === 0 || stripos($line, 'error:') === 0) {
                 $errors[] = $line;
+                continue;
             }
-            if (preg_match('/Container\s+(?P<name>[\w\-\.]+)\s+(?P<status>Started|Starting|Stopped|Healthy|Unhealthy)/i', $line, $matches)) {
-                $events[] = [
-                    'container' => $matches['name'],
-                    'status' => strtolower($matches['status']),
-                    'raw' => $line,
-                ];
+
+            if (preg_match('/^Network\s+(?P<name>[^\s]+)\s+(?P<status>.+)$/i', $line, $matches)) {
+                $networks[$matches['name']] = trim($matches['status']);
+                continue;
+            }
+
+            if (preg_match('/^Container\s+(?P<name>[^\s]+)\s+(?P<status>.+)$/i', $line, $matches)) {
+                $containers[$matches['name']] = trim($matches['status']);
+                continue;
+            }
+
+            if ($buildStatus === '' && preg_match('/^#[0-9]+\s+/', $line)) {
+                $buildStatus = $line;
             }
         }
 
         return [
-            'events' => $events,
+            'containers' => $containers,
+            'networks' => $networks,
+            'build_status' => $buildStatus,
             'errors' => $errors,
             'lines' => $lines,
         ];

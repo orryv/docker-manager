@@ -31,7 +31,7 @@ class DockerComposeManagerIntegrationTest extends TestCase
         ]);
 
         $progressInvocations = 0;
-        $config->onProgress(function () use (&$progressInvocations): void {
+        $config->onProgress(function (string $id, array $progress) use (&$progressInvocations): void {
             $progressInvocations++;
         });
 
