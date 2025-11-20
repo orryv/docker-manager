@@ -3,10 +3,22 @@
 
 declare(strict_types=1);
 
-use Orryv\DockerManager;
+use Orryv\DockerComposeManager;
+use Orryv\YamlParserFactory;
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
+$fixtureDir = realpath(__DIR__ . '/../tests/docker/start-container-demo');
+$composeFile = $fixtureDir . DIRECTORY_SEPARATOR . 'docker-compose.yml';
+
 echo 'Starting docker container...' . PHP_EOL;
 
-$dm = new DockerManager(__DIR__ . '/../tests/docker/start-container-demo/docker-compose.yml');
+$debug = __DIR__ . '/../tmp';
+if (!file_exists($debug)) {
+    mkdir($debug, 0777, true);
+}
+
+$dcm = new DockerComposeManager(YamlParserFactory::getYamlExtensionParser());
+$dcm->debug($debug);
+$config = $dcm->fromDockerComposeFile('test', $composeFile);
+$dcm->start(null, null, true);

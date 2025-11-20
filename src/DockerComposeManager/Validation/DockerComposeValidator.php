@@ -6,7 +6,7 @@ use Orryv\DockerComposeManager\Exceptions\YamlException;
 
 class DockerComposeValidator
 {
-    public static function isValid(array $data): bool
+    public static function validate(array $data): void
     {
         if (isset($data['version'])) {
             throw new YamlException('The "version" key is deprecated in Docker Compose files, remove it.');
@@ -16,7 +16,5 @@ class DockerComposeValidator
         if (!isset($data['services']) || !is_array($data['services']) || empty($data['services'])) {
             throw new YamlException('The Docker Compose file must define at least one service under the "services" key.');
         }
-
-        return true;
     }
 }

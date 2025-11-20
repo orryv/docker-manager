@@ -2,6 +2,10 @@
 
 namespace Orryv\DockerComposeManager\DockerCompose;
 
+use Orryv\DockerComposeManager\YamlParsers\YamlParserInterface;
+use Orryv\DockerComposeManager\Exceptions\YamlParserException;
+use Orryv\DockerComposeManager\FileSystem\Writer;
+
 /**
  * Class DockerComposeHandler
  * 
@@ -12,10 +16,51 @@ namespace Orryv\DockerComposeManager\DockerCompose;
 class DockerComposeHandler
 {
     private array $dockerCompose;
+    private ?string $tmpFilePath = null;
+    private ?YamlParserInterface $yaml_parser;
 
-    public function __construct(array $dockerComposeArray)
+    public function __construct(array $dockerComposeArray, ?YamlParserInterface $yaml_parser = null)
     {
         $this->dockerCompose = $dockerComposeArray;
+        $this->yaml_parser = $yaml_parser;
+    }
+
+    /**
+     * Removes all temporary files created by this handler.
+     */
+    public function removeTmpFiles(): void
+    {
+        if($this->tmpFilePath !== null) {
+            Writer::remove($this->tmpFilePath);
+        }
+    }
+
+    public function copyTmpFiles(string $destinationDir): void
+    {
+        if($this->tmpFilePath !== null && file_exists($this->tmpFilePath)) {
+            $newPath = $destinationDir . DIRECTORY_SEPARATOR . basename($this->tmpFilePath);
+            copy($this->tmpFilePath, $newPath);
+        }
+    }
+
+    public function saveTmpDockerComposeFile(string $fileDir): void
+    {
+        if ($this->yaml_parser === null) {
+            throw new YamlParserException('Cannot save docker-compose file without a YAML parser.');
+        }
+
+        $yamlContent = $this->yaml_parser->build($this->dockerCompose);
+
+        if($this->tmpFilePath === null) {
+            $this->tmpFilePath = $fileDir . DIRECTORY_SEPARATOR . 'docker-compose-tmp-' . uniqid() . '.yml';
+        }
+
+        Writer::overwrite($this->tmpFilePath, $yamlContent);
+    }
+
+    public function getTmpFilePath(): ?string
+    {
+        return $this->tmpFilePath;
     }
 
     public function toArray(): array
