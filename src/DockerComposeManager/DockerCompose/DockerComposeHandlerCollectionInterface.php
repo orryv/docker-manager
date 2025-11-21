@@ -1,10 +1,10 @@
-<?php 
+<?php
 
-namespace Orryv\DockerComposeManager\Internal;
+namespace Orryv\DockerComposeManager\DockerCompose;
 
 use Orryv\DockerComposeManager\DockerCompose\DockerComposeHandler;
 
-interface InternalContainerConfigManagerInterface
+interface DockerComposeHandlerCollectionInterface
 {
     public function add(string $id, DockerComposeHandler $config): void;
 

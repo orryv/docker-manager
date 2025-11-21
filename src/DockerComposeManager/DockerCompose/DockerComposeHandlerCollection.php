@@ -1,11 +1,8 @@
-<?php 
+<?php
 
-namespace Orryv\DockerComposeManager\Internal;
+namespace Orryv\DockerComposeManager\DockerCompose;
 
-use Orryv\DockerComposeManager\DockerCompose\DockerComposeHandler;
-use Orryv\DockerComposeManager\Internal\InternalContainerConfigManagerInterface;
-
-class InternalContainerConfigManager implements InternalContainerConfigManagerInterface
+class DockerComposeHandlerCollection implements DockerComposeHandlerCollectionInterface
 {
     private array $configs = []; // id => DockerComposeHandler
     private ?string $activeConfigId = null;
