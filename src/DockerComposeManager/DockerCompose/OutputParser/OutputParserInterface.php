@@ -10,5 +10,5 @@ interface OutputParserInterface
     /**
      * Parse a docker-compose output log file for a specific definition.
      */
-    public function parse(string $id, string $outputFile): array;
+    public function parse(\Orryv\DockerComposeManager\DockerCompose\CommandExecution\CommandExecutionResult $executionResult): array;
 }

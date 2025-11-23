@@ -13,6 +13,9 @@ use Orryv\DockerComposeManager\DockerCompose\Definition\DefinitionFactory;
 use Orryv\DockerComposeManager\DockerCompose\Definition\DefinitionFactoryInterface;
 use Orryv\DockerComposeManager\DockerCompose\CommandExecutor\CommandExecutor;
 use Orryv\DockerComposeManager\DockerCompose\CommandExecutor\CommandExecutorInterface;
+use Orryv\DockerComposeManager\DockerCompose\CommandExecution\CommandExecutionResult;
+use Orryv\DockerComposeManager\DockerCompose\CommandExecution\CommandExecutionResultsCollection;
+use Orryv\DockerComposeManager\DockerCompose\CommandExecution\CommandExecutionResultsCollectionFactory;
 use Orryv\DockerComposeManager\DockerCompose\FileHandler\FileHandlerFactoryInterface;
 use Orryv\DockerComposeManager\DockerCompose\FileHandler\FileHandlerFactory;
 use Orryv\DockerComposeManager\Validation\DockerComposeValidator;
@@ -41,6 +44,7 @@ class DockerComposeManager
     private ?BlockingOutputParserInterface $blockingOutputParser = null;
     private FileHandlerFactoryInterface $fileHandlerFactory;
     private ?Closure $onProgressCallback = null;
+    private CommandExecutionResultsCollectionFactory $executionResultsCollectionFactory;
 
 
     public function __construct(
@@ -50,7 +54,8 @@ class DockerComposeManager
         ?CommandExecutorInterface $commandExecutor = null,
         ?DefinitionFactoryInterface $handlerFactory = null,
         ?OutputParserInterface $outputParser = null,
-        ?BlockingOutputParserInterface $blockingOutputParser = null
+        ?BlockingOutputParserInterface $blockingOutputParser = null,
+        ?CommandExecutionResultsCollectionFactory $executionResultsCollectionFactory = null
     ){
         $this->yamlarser = is_string($yamlarser)
             ? (new YamlParserFactory())->create($yamlarser)
@@ -62,6 +67,8 @@ class DockerComposeManager
         $this->commandExecutor = $commandExecutor ?? new CommandExecutor();
         $this->outputParser = $outputParser ?? new DockerComposeOutputParser();
         $this->blockingOutputParser = $blockingOutputParser ?? new BlockingOutputParser($this->outputParser);
+        $this->executionResultsCollectionFactory = $executionResultsCollectionFactory
+            ?? new CommandExecutionResultsCollectionFactory();
 
     }
 
@@ -139,7 +146,6 @@ class DockerComposeManager
     {
         $executionResults = $this->executeStart($id, $serviceNames, $rebuildContainers);
 
-        // TODO: create CommandExecutionResultsCollection and CommandExecutionResult objects and pass CommandExecutionResultsCollection to blocking parser and CommandExecutionResult to outputParser->parse
         $allSuccessful = $this->blockingOutputParser->parse($executionResults, 250000, $this->onProgressCallback);
 
         return $allSuccessful;
@@ -162,8 +168,9 @@ class DockerComposeManager
             if ($outputFile === null) {
                 throw new DockerComposeManagerException("No output file found for config ID: {$config_id}");
             }
-            // TODO: create CommandExecutionResultsCollection and CommandExecutionResult objects and pass CommandExecutionResultsCollection to blocking parser and CommandExecutionResult to outputParser->parse
-            $results[$config_id] = $this->outputParser->parse($id, $outputFile);
+            $results[$config_id] = $this->outputParser->parse(
+                new CommandExecutionResult($config_id, $this->runningPids[$config_id] ?? null, $outputFile)
+            );
         }
 
         return $results;
@@ -191,7 +198,7 @@ class DockerComposeManager
         string|array|null $id = null,
         string|array|null $serviceNames = null,
         bool $rebuildContainers = false
-    ): array {
+    ): CommandExecutionResultsCollection {
         if($this->executionPath === null) {
             throw new DockerComposeManagerException('Can only start containers when using fromDockerComposeFile() or fromYamlArray().');
         }
@@ -222,21 +229,20 @@ class DockerComposeManager
         return $this->execute($commands);
     }
 
-    private function execute(array $commands): array
+    private function execute(array $commands): CommandExecutionResultsCollection
     {
-        $executionResults = [];
-        foreach($commands as $config_id => $commandData) {
-            $executionResults[$config_id] = $this->commandExecutor->executeAsync(
-                $commandData['command'],
-                $this->executionPath,
-                $commandData['tmp_identifier']
-            );
+        $executionResults = $this->executionResultsCollectionFactory->createFromCommands(
+            $commands,
+            $this->commandExecutor,
+            $this->executionPath
+        );
 
-            if ($executionResults[$config_id]['pid'] !== null) {
-                $this->runningPids[$commandData['id']] = $executionResults[$config_id]['pid'];
+        foreach ($executionResults as $executionResult) {
+            if ($executionResult->getPid() !== null) {
+                $this->runningPids[$executionResult->getId()] = $executionResult->getPid();
             }
 
-            $this->finalDockerComposeFile[$commandData['id']] = $executionResults[$config_id]['output_file'];
+            $this->finalDockerComposeFile[$executionResult->getId()] = $executionResult->getOutputFile();
         }
 
         return $executionResults;

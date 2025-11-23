@@ -7,5 +7,5 @@ namespace Orryv\DockerComposeManager\DockerCompose\OutputParser;
  */
 interface BlockingOutputParserInterface
 {
-    public function parse($executionResults, $uSleep = 250000): bool;
+    public function parse(\Orryv\DockerComposeManager\DockerCompose\CommandExecution\CommandExecutionResultsCollection $executionResults, $uSleep = 250000, ?callable $onProgressCallback = null): bool;
 }

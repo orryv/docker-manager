@@ -2,6 +2,7 @@
 
 namespace Orryv\DockerComposeManager\DockerCompose\OutputParser;
 
+use Orryv\DockerComposeManager\DockerCompose\CommandExecution\CommandExecutionResultsCollection;
 use Orryv\DockerComposeManager\DockerCompose\OutputParser\BlockingOutputParserInterface;
 use Orryv\DockerComposeManager\DockerCompose\OutputParser\OutputParserInterface;
 
@@ -17,13 +18,17 @@ class BlockingOutputParser implements BlockingOutputParserInterface
         $this->outputParser = $outputParser;
     }
 
-    public function parse($executionResults, $uSleep = 250000, ?callable $onProgressCallback = null): bool
+    /**
+     * Parse execution results until all scripts have ended.
+     */
+    public function parse(CommandExecutionResultsCollection $executionResults, $uSleep = 250000, ?callable $onProgressCallback = null): bool
     {
+        $latestParseData = [];
         do{
             $scriptExecutionEnded = true;
-            foreach($executionResults as $id => $result) {
-                $outputFile = $result['output_file'];
-                $parseData = $this->outputParser->parse($id, $outputFile);
+            foreach($executionResults as $result) {
+                $parseData = $this->outputParser->parse($result);
+                $latestParseData[$result->getId()] = $parseData;
 
                 if ($onProgressCallback !== null) {
                     $onProgressCallback($parseData);
@@ -38,10 +43,12 @@ class BlockingOutputParser implements BlockingOutputParserInterface
 
         // check if successful
         $allSuccessful = true;
-        foreach($parseData['success']['containers'] as $id => $result) {
-            if(!$result) {
-                $allSuccessful = false;
-                break;
+        foreach($latestParseData as $parseData) {
+            foreach($parseData['success']['containers'] as $result) {
+                if(!$result) {
+                    $allSuccessful = false;
+                    break 2;
+                }
             }
         }
 

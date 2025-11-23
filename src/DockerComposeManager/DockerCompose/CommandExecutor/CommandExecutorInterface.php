@@ -10,7 +10,12 @@ interface CommandExecutorInterface
     /**
      * Start a command asynchronously and return immediately.
      */
-    public function executeAsync(string $command, string $executionPath, ?string $tmpIdentifier = null): array;
+    public function executeAsync(
+        string $id,
+        string $command,
+        string $executionPath,
+        ?string $tmpIdentifier = null
+    ): \Orryv\DockerComposeManager\DockerCompose\CommandExecution\CommandExecutionResult;
 
     public function getRegisteredPids(): array;
 

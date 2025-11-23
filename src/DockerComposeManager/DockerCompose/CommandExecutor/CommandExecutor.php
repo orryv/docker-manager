@@ -3,6 +3,7 @@
 namespace Orryv\DockerComposeManager\DockerCompose\CommandExecutor;
 
 use Orryv\DockerComposeManager\Exceptions\DockerComposeManagerException;
+use Orryv\DockerComposeManager\DockerCompose\CommandExecution\CommandExecutionResult;
 
 class CommandExecutor implements CommandExecutorInterface
 {
@@ -24,7 +25,12 @@ class CommandExecutor implements CommandExecutorInterface
      * - STDOUT and STDERR go into $outputFile.
      * - Works the same way on Windows and Unix.
      */
-    public function executeAsync(string $command, string $executionPath, ?string $tmpIdentifier = null): array
+    public function executeAsync(
+        string $id,
+        string $command,
+        string $executionPath,
+        ?string $tmpIdentifier = null
+    ): CommandExecutionResult
     {
         if (!\is_dir($executionPath)) {
             throw new DockerComposeManagerException(
@@ -90,10 +96,7 @@ class CommandExecutor implements CommandExecutorInterface
         $this->pids[]        = $pid;
         $this->outputFiles[] = $outputFile;
 
-        return [
-            'pid'         => $pid,
-            'output_file' => $outputFile,
-        ];
+        return new CommandExecutionResult($id, $pid, $outputFile, $tmpIdentifier);
     }
 
     public function getRegisteredPids(): array
