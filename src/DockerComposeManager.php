@@ -24,6 +24,9 @@ use Orryv\DockerComposeManager\DockerCompose\OutputParser\BlockingOutputParserIn
 use Orryv\DockerComposeManager\DockerCompose\OutputParser\BlockingOutputParser;
 use Orryv\DockerComposeManager\DockerCompose\OutputParser\OutputParser as DockerComposeOutputParser;
 use Orryv\DockerComposeManager\DockerCompose\OutputParser\OutputParserInterface;
+use Orryv\DockerComposeManager\DockerCompose\OutputParser\OutputParserResultInterface;
+use Orryv\DockerComposeManager\DockerCompose\OutputParser\OutputParserResultsCollection;
+use Orryv\DockerComposeManager\DockerCompose\OutputParser\OutputParserResultsCollectionInterface;
 use Closure;
 
 class DockerComposeManager
@@ -132,6 +135,8 @@ class DockerComposeManager
 
     /**
      * Registers a callback to receive progress updates during container start (non async methods).
+     *
+     * @param callable(OutputParserResultInterface):void $callback
      */
     public function onProgress(callable $callback): void
     {
@@ -146,9 +151,9 @@ class DockerComposeManager
     {
         $executionResults = $this->executeStart($id, $serviceNames, $rebuildContainers);
 
-        $allSuccessful = $this->blockingOutputParser->parse($executionResults, 250000, $this->onProgressCallback);
+        $parseResults = $this->blockingOutputParser->parse($executionResults, 250000, $this->onProgressCallback);
 
-        return $allSuccessful;
+        return $parseResults->isSuccessful();
     }
 
     public function startAsync(string|array|null $id = null, string|array|null $serviceNames = null, bool $rebuildContainers = false) // TODO: return type
@@ -159,18 +164,18 @@ class DockerComposeManager
     /**
      * Get progress for async methods (startAsync, restartAsync, etc).
      */
-    public function getProgress(string|array|null $id = null): array
+    public function getProgress(string|array|null $id = null): OutputParserResultsCollectionInterface
     {
-        $results = [];
+        $results = new OutputParserResultsCollection();
         $ids = $this->normalizeInternalIds($id);
         foreach($ids ?? [] as $config_id) {
             $outputFile = $this->finalDockerComposeFile[$config_id] ?? null;
             if ($outputFile === null) {
                 throw new DockerComposeManagerException("No output file found for config ID: {$config_id}");
             }
-            $results[$config_id] = $this->outputParser->parse(
+            $results->add($this->outputParser->parse(
                 new CommandExecutionResult($config_id, $this->runningPids[$config_id] ?? null, $outputFile)
-            );
+            ));
         }
 
         return $results;
@@ -178,22 +183,9 @@ class DockerComposeManager
 
     public function isFinished(string|array|null $id = null): bool
     {
-        $ids = $this->normalizeInternalIds($id);
-        foreach($ids ?? [] as $config_id) {
-            $outputFile = $this->finalDockerComposeFile[$config_id] ?? null;
-            if ($outputFile === null) {
-                throw new DockerComposeManagerException("No output file found for config ID: {$config_id}");
-            }
-            $parseData = $this->outputParser->parse(
-                new CommandExecutionResult($config_id, $this->runningPids[$config_id] ?? null, $outputFile)
-            );
+        $progress = $this->getProgress($id);
 
-            if (!$parseData['script_ended']) {
-                return false;
-            }
-        }
-
-        return true;
+        return $progress->isFinishedExecuting();
     }
 
     public function getRunningPids(): array

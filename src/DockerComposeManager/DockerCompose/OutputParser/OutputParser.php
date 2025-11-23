@@ -3,6 +3,8 @@
 namespace Orryv\DockerComposeManager\DockerCompose\OutputParser;
 
 use Orryv\DockerComposeManager\DockerCompose\CommandExecution\CommandExecutionResult;
+use Orryv\DockerComposeManager\DockerCompose\OutputParser\OutputParserResult;
+use Orryv\DockerComposeManager\DockerCompose\OutputParser\OutputParserResultInterface;
 use Orryv\XString;
 
 /**
@@ -17,10 +19,18 @@ class OutputParser implements OutputParserInterface
         'running'
     ];
 
+    /** @var string[] */
+    private array $networkSuccess = [
+        'created',
+        'recreated',
+        'exists',
+        'up-to-date'
+    ];
+
     /**
      * Parse docker-compose output for a single execution.
      */
-    public function parse(CommandExecutionResult $executionResult): array
+    public function parse(CommandExecutionResult $executionResult): OutputParserResultInterface
     {
         $outputFile = $executionResult->getOutputFile();
 
@@ -51,6 +61,7 @@ class OutputParser implements OutputParserInterface
                 $name = $line->between(' ', ' ')->trim()->toString();
                 $status = $line->after($name, true)->trim()->toString();
                 $parsed['states']['networks'][$name] = $status;
+                $parsed['success']['networks'][$name] = in_array(strtolower($status), $this->networkSuccess);
             } elseif($line->startsWith('Container ')) {
                 $name = $line->between(' ', ' ')->trim()->toString();
                 $status = $line->after($name, true)->trim();
@@ -80,6 +91,15 @@ class OutputParser implements OutputParserInterface
             $parsed['script_ended'] = true;
         }
 
-        return $parsed;
+        return new OutputParserResult(
+            $executionResult->getId(),
+            $parsed['states']['containers'],
+            $parsed['success']['containers'],
+            $parsed['states']['networks'],
+            $parsed['success']['networks'],
+            $parsed['errors'],
+            $parsed['build_last_line'],
+            $parsed['script_ended']
+        );
     }
 }

@@ -24,8 +24,8 @@ $config = $dcm->fromDockerComposeFile('test', $composeFile);
 $dcm->startAsync(null, null, true);
 
 do{
-    $progress = $dcm->getProgress('test');
+    $progress = $dcm->getProgress('test')->get('test');
     // print_r($progress);
-    echo "Progress: " . $progress['test']['build_last_line'] . PHP_EOL;
+    echo 'Progress: ' . ($progress->getBuildLastLine() ?? '') . PHP_EOL;
     usleep(500000);
-} while (!$dcm->isFinished());
+} while (!$progress->isFinishedExecuting());
