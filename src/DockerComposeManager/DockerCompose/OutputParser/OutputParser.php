@@ -47,8 +47,6 @@ class OutputParser implements OutputParserInterface
         foreach(explode("\n", $outputContent) as $pos => $line) {
             $line = XString::trim($line);
 
-            echo "Parsing line {$pos}: {$line}\n";
-
             if($line->startsWith('Network ')) {
                 $name = $line->between(' ', ' ')->trim()->toString();
                 $status = $line->after($name, true)->trim()->toString();
@@ -77,7 +75,6 @@ class OutputParser implements OutputParserInterface
                 break;
             }
         }
-
 
         if($all_containers_ended && count($parsed['states']['containers']) > 0) {
             $parsed['script_ended'] = true;

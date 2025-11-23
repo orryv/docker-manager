@@ -176,6 +176,26 @@ class DockerComposeManager
         return $results;
     }
 
+    public function isFinished(string|array|null $id = null): bool
+    {
+        $ids = $this->normalizeInternalIds($id);
+        foreach($ids ?? [] as $config_id) {
+            $outputFile = $this->finalDockerComposeFile[$config_id] ?? null;
+            if ($outputFile === null) {
+                throw new DockerComposeManagerException("No output file found for config ID: {$config_id}");
+            }
+            $parseData = $this->outputParser->parse(
+                new CommandExecutionResult($config_id, $this->runningPids[$config_id] ?? null, $outputFile)
+            );
+
+            if (!$parseData['script_ended']) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     public function getRunningPids(): array
     {
         return $this->runningPids;
