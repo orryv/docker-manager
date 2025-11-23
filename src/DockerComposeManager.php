@@ -6,7 +6,6 @@ use Orryv\DockerComposeManager\YamlParsers\YamlParserInterface;
 use Orryv\DockerComposeManager\Exceptions\DockerComposeManagerException;
 use Orryv\DockerComposeManager\Exceptions\YamlParserException;
 use Orryv\DockerComposeManager\FileSystem\Reader;
-use Orryv\DockerComposeManager\DockerCompose\Definition\Definition as DockerComposeDefinition;
 use Orryv\DockerComposeManager\DockerCompose\Definition\DefinitionInterface as DockerComposeDefinitionInterface;
 use Orryv\DockerComposeManager\DockerCompose\DefinitionsCollection\DefinitionsCollection;
 use Orryv\DockerComposeManager\DockerCompose\DefinitionsCollection\DefinitionsCollectionInterface;
