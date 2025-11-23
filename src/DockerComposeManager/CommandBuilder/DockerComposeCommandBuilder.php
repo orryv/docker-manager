@@ -2,22 +2,25 @@
 
 namespace Orryv\DockerComposeManager\CommandBuilder;
 
-use Orryv\DockerComposeManager\DockerCompose\DockerComposeHandler;
+use Orryv\DockerComposeManager\DockerCompose\Definition\Definition;
 use Orryv\DockerComposeManager\Exceptions\DockerComposeManagerException;
+use Orryv\DockerComposeManager\DockerCompose\FileHandler\FileHandlerInterface;
 
 class DockerComposeCommandBuilder
 {
-    private DockerComposeHandler $dockerComposeHandler;
+    private Definition $dockerComposeDefinition;
+    private FileHandlerInterface $fileHandler;
 
-    public function __construct(DockerComposeHandler $dockerComposeHandler)
+    public function __construct(Definition $dockerComposeDefinition, FileHandlerInterface $fileHandler)
     {
-        $this->dockerComposeHandler = $dockerComposeHandler;
+        $this->dockerComposeDefinition = $dockerComposeDefinition;
+        $this->fileHandler = $fileHandler;
     }
 
     public function start(null|string|array $serviceNames = null, bool $rebuildContainers = false): string
     {
         // Path to the specific docker-compose file you want to use
-        $composeFile = $this->dockerComposeHandler->getTmpFilePath();
+        $composeFile = $this->fileHandler->getFinalDockerComposeFilePath();
 
         if ($composeFile === null) {
             throw new DockerComposeManagerException('Temporary docker-compose file has not been created yet.');

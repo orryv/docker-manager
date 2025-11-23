@@ -1,13 +1,16 @@
 <?php
 
-namespace Orryv\DockerComposeManager\DockerCompose;
+namespace Orryv\DockerComposeManager\DockerCompose\Definition;
 
-class DockerComposeHandlerCollection implements DockerComposeHandlerCollectionInterface
+use Orryv\DockerComposeManager\DockerCompose\Definition\Definition;
+use Orryv\DockerComposeManager\DockerCompose\Definition\DefinitionsCollectionInterface;
+
+class DefinitionsCollection implements DefinitionsCollectionInterface
 {
-    private array $configs = []; // id => DockerComposeHandler
+    private array $configs = []; // id => Definition
     private ?string $activeConfigId = null;
 
-    public function getCurrent(): ?DockerComposeHandler
+    public function getCurrent(): ?Definition
     {
         if ($this->activeConfigId === null) {
             return null;
@@ -16,7 +19,7 @@ class DockerComposeHandlerCollection implements DockerComposeHandlerCollectionIn
         return $this->configs[$this->activeConfigId] ?? null;
     }
 
-    public function get(string $id): DockerComposeHandler
+    public function get(string $id): Definition
     {
         if (!array_key_exists($id, $this->configs)) {
             throw new \InvalidArgumentException("No configuration found with ID: $id");
@@ -42,7 +45,7 @@ class DockerComposeHandlerCollection implements DockerComposeHandlerCollectionIn
         $this->activeConfigId = $id;
     }
 
-    public function add(string $id, DockerComposeHandler $config): void
+    public function add(string $id, Definition $config): void
     {
         $this->configs[$id] = $config;
 
