@@ -2,6 +2,7 @@
 
 namespace Orryv\DockerComposeManager\DockerCompose\OutputParser;
 
+use Orryv\DockerComposeManager\DockerCompose\CommandExecution\CommandExecutionResult;
 use Orryv\XString;
 
 /**
@@ -16,9 +17,12 @@ class OutputParser implements OutputParserInterface
         'running'
     ];
 
-    public function parse(string $id, string $outputFile): array
+    /**
+     * Parse docker-compose output for a single execution.
+     */
+    public function parse(CommandExecutionResult $executionResult): array
     {
-        
+        $outputFile = $executionResult->getOutputFile();
 
         if (!file_exists($outputFile)) {
             throw new \InvalidArgumentException("Output file does not exist: {$outputFile}");
@@ -42,8 +46,6 @@ class OutputParser implements OutputParserInterface
 
         foreach(explode("\n", $outputContent) as $pos => $line) {
             $line = XString::trim($line);
-
-            echo "Parsing line {$pos}: {$line}\n";
 
             if($line->startsWith('Network ')) {
                 $name = $line->between(' ', ' ')->trim()->toString();
@@ -73,7 +75,6 @@ class OutputParser implements OutputParserInterface
                 break;
             }
         }
-
 
         if($all_containers_ended && count($parsed['states']['containers']) > 0) {
             $parsed['script_ended'] = true;
