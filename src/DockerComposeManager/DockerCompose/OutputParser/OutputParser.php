@@ -1,18 +1,21 @@
-<?php 
+<?php
 
-namespace Orryv\DockerComposeManager\DockerCompose;
+namespace Orryv\DockerComposeManager\DockerCompose\OutputParser;
 
 use Orryv\DockerComposeManager\DockerCompose\Definition\DefinitionInterface;
 use Orryv\XString;
 
-class OutputParser
+/**
+ * Default implementation for parsing docker-compose execution output.
+ */
+class OutputParser implements OutputParserInterface
 {
+    /** @var string[] */
     private array $success = [
         'recreated',
         'started',
         'running'
     ];
-
 
     public function parse(string $id, string $outputFile, DefinitionInterface $handler): array
     {
@@ -22,7 +25,6 @@ class OutputParser
 
         $outputContent = file_get_contents($outputFile);
 
-        $lines = explode("\n", $outputContent);
         $parsed = [
             'states' => [
                 'networks' => [],

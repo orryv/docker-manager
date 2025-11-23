@@ -6,18 +6,19 @@ use Orryv\DockerComposeManager\YamlParsers\YamlParserInterface;
 use Orryv\DockerComposeManager\Exceptions\DockerComposeManagerException;
 use Orryv\DockerComposeManager\Exceptions\YamlParserException;
 use Orryv\DockerComposeManager\FileSystem\Reader;
-use Orryv\DockerComposeManager\DockerCompose\Definition\Definition as DockerComposeDefinition;
 use Orryv\DockerComposeManager\DockerCompose\Definition\DefinitionInterface as DockerComposeDefinitionInterface;
-use Orryv\DockerComposeManager\DockerCompose\Definition\DefinitionsCollection;
-use Orryv\DockerComposeManager\DockerCompose\Definition\DefinitionsCollectionInterface;
+use Orryv\DockerComposeManager\DockerCompose\DefinitionsCollection\DefinitionsCollection;
+use Orryv\DockerComposeManager\DockerCompose\DefinitionsCollection\DefinitionsCollectionInterface;
 use Orryv\DockerComposeManager\DockerCompose\Definition\DefinitionFactory;
 use Orryv\DockerComposeManager\DockerCompose\Definition\DefinitionFactoryInterface;
-use Orryv\DockerComposeManager\DockerCompose\CommandExecutor;
+use Orryv\DockerComposeManager\DockerCompose\CommandExecutor\CommandExecutor;
+use Orryv\DockerComposeManager\DockerCompose\CommandExecutor\CommandExecutorInterface;
 use Orryv\DockerComposeManager\DockerCompose\FileHandler\FileHandlerFactoryInterface;
 use Orryv\DockerComposeManager\DockerCompose\FileHandler\FileHandlerFactory;
 use Orryv\DockerComposeManager\Validation\DockerComposeValidator;
 use Orryv\DockerComposeManager\CommandBuilder\DockerComposeCommandBuilder;
-use Orryv\DockerComposeManager\DockerCompose\OutputParser as DockerComposeOutputParser;
+use Orryv\DockerComposeManager\DockerCompose\OutputParser\OutputParser as DockerComposeOutputParser;
+use Orryv\DockerComposeManager\DockerCompose\OutputParser\OutputParserInterface;
 class DockerComposeManager
 {
     /**
@@ -28,11 +29,11 @@ class DockerComposeManager
     private DefinitionsCollectionInterface $definitionsCollection;
     private ?string $executionPath = null;
     private ?string $debugDir = null;
-    private CommandExecutor $commandExecutor;
+    private CommandExecutorInterface $commandExecutor;
     private DefinitionFactoryInterface $handlerFactory;
     private array $tmpOutputFiles = [];
     private array $runningPids = [];
-    private ?DockerComposeOutputParser $outputParser = null;
+    private ?OutputParserInterface $outputParser = null;
     private FileHandlerFactoryInterface $fileHandlerFactory;
 
 
@@ -40,9 +41,9 @@ class DockerComposeManager
         YamlParserInterface|string $yaml_parser = 'ext-yaml',
         ?DefinitionsCollectionInterface $definitionsCollection = null,
         ?FileHandlerFactoryInterface $fileHandlerFactory = null,
-        ?CommandExecutor $commandExecutor = null,
+        ?CommandExecutorInterface $commandExecutor = null,
         ?DefinitionFactoryInterface $handlerFactory = null,
-        ?DockerComposeOutputParser $outputParser = null,
+        ?OutputParserInterface $outputParser = null,
     ){
         $this->yaml_parser = is_string($yaml_parser)
             ? (new YamlParserFactory())->create($yaml_parser)
@@ -53,7 +54,7 @@ class DockerComposeManager
         $this->definitionsCollection = $definitionsCollection ?? new DefinitionsCollection();
         $this->commandExecutor = $commandExecutor ?? new CommandExecutor();
         $this->outputParser = $outputParser ?? new DockerComposeOutputParser();
-        
+
     }
 
     public function __destruct()

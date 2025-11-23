@@ -1,10 +1,10 @@
 <?php
 
-namespace Orryv\DockerComposeManager\DockerCompose;
+namespace Orryv\DockerComposeManager\DockerCompose\CommandExecutor;
 
 use Orryv\DockerComposeManager\Exceptions\DockerComposeManagerException;
 
-class CommandExecutor
+class CommandExecutor implements CommandExecutorInterface
 {
     /** @var array<int|null> */
     private array $pids = [];
