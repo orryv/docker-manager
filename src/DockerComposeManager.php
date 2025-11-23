@@ -35,7 +35,7 @@ class DockerComposeManager
      * Instance we use to parse .yml files.
      *  Nullable because we allow operations without docker compose arrays.
      */
-    private ?YamlParserInterface $yamlarser;
+    private ?YamlParserInterface $yamlParser;
     private DefinitionsCollectionInterface $definitionsCollection;
     private ?string $executionPath = null;
     private ?string $debugDir = null;
@@ -51,7 +51,7 @@ class DockerComposeManager
 
 
     public function __construct(
-        YamlParserInterface|string $yamlarser = 'ext-yaml',
+        YamlParserInterface|string $yamlParser = 'ext-yaml',
         ?DefinitionsCollectionInterface $definitionsCollection = null,
         ?FileHandlerFactoryInterface $fileHandlerFactory = null,
         ?CommandExecutorInterface $commandExecutor = null,
@@ -60,9 +60,9 @@ class DockerComposeManager
         ?BlockingOutputParserInterface $blockingOutputParser = null,
         ?CommandExecutionResultsCollectionFactory $executionResultsCollectionFactory = null
     ){
-        $this->yamlarser = is_string($yamlarser)
-            ? (new YamlParserFactory())->create($yamlarser)
-            : $yamlarser;
+        $this->yamlParser = is_string($yamlParser)
+            ? (new YamlParserFactory())->create($yamlParser)
+            : $yamlParser;
 
         $this->handlerFactory = $handlerFactory ?? new DefinitionFactory();
         $this->fileHandlerFactory = $fileHandlerFactory ?? new FileHandlerFactory();
@@ -77,10 +77,15 @@ class DockerComposeManager
 
     public function __destruct()
     {
+        $this->cleanup();
+    }
+
+    public function cleanup(): void
+    {
         // Clean up any temporary files created
         foreach ($this->definitionsCollection->getRegisteredIds() as $config_id) {
             $definition = $this->definitionsCollection->get($config_id);
-            $fileHandler = $this->fileHandlerFactory->create($definition, $this->yamlarser);
+            $fileHandler = $this->fileHandlerFactory->create($definition, $this->yamlParser);
             if ($definition !== null) {
                 if($this->debugDir !== null) {
                     $fileHandler->copyFinalDockerComposeFile($this->debugDir);
@@ -115,7 +120,7 @@ class DockerComposeManager
         $this->executionPath = dirname($file_path);
         $dockerComposeDefinition = $this->handlerFactory->create(
             $this->getYamlParser()->parse($dockerFileContents),
-            $this->yamlarser,
+            $this->yamlParser,
         );
         $this->definitionsCollection->add($id, $dockerComposeDefinition);
         DockerComposeValidator::validate($this->definitionsCollection->getCurrent()->toArray()); // TODO: move to execution side
@@ -127,7 +132,7 @@ class DockerComposeManager
     {
         $this->executionPath = $executionFolder;
         DockerComposeValidator::validate($yaml_array); // TODO: move to execution side
-        $dockerComposeDefinition = $this->handlerFactory->create($yaml_array, $this->yamlarser);
+        $dockerComposeDefinition = $this->handlerFactory->create($yaml_array, $this->yamlParser);
         $this->definitionsCollection->add($id, $dockerComposeDefinition);
 
         return $dockerComposeDefinition;
@@ -193,7 +198,7 @@ class DockerComposeManager
         return $this->runningPids;
     }
 
-    public function getFinalDockerComposeFile(string $id): array
+    public function getFinalDockerComposeFile(string $id): string
     {
         if(!isset($this->finalDockerComposeFile[$id])) {
             throw new DockerComposeManagerException("No final docker-compose output file found for ID: {$id}");
@@ -215,7 +220,7 @@ class DockerComposeManager
             throw new DockerComposeManagerException('Can only start containers when using fromDockerComposeFile() or fromYamlArray().');
         }
 
-        if($this->yamlarser === null) {
+        if($this->yamlParser === null) {
             throw new YamlParserException(
                 'No YAML parser configured. Construct with one, or use fromYamlArray() to build from an array directly.'
             );
@@ -226,7 +231,7 @@ class DockerComposeManager
         $commands = [];
         foreach($ids as $config_id) {
             $dockerComposeDefinition = $this->definitionsCollection->get($config_id);
-            $fileHandler = $this->fileHandlerFactory->create($dockerComposeDefinition, $this->yamlarser);
+            $fileHandler = $this->fileHandlerFactory->create($dockerComposeDefinition, $this->yamlParser);
             $fileHandler->saveFinalDockerComposeFile($this->executionPath);
             $command = (new DockerComposeCommandBuilder($dockerComposeDefinition, $fileHandler))
                 ->start($serviceNames, $rebuildContainers);
@@ -281,21 +286,19 @@ class DockerComposeManager
             return [$id];
         } elseif (is_array($id)) {
             return $id;
-        } else {
-            return $this->definitionsCollection->getRegisteredIds();
         }
-
-        return [];
+        
+        return $this->definitionsCollection->getRegisteredIds();
     }
 
     private function getYamlParser(): YamlParserInterface
     {
-        if ($this->yamlarser === null) {
+        if ($this->yamlParser === null) {
             throw new YamlParserException(
                 'No YAML parser configured. Construct with one, or use fromYamlArray() to build from an array directly.'
             );
         }
 
-        return $this->yamlarser;
+        return $this->yamlParser;
     }
 }
