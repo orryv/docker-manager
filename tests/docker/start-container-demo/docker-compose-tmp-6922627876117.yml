@@ -1,0 +1,24 @@
+---
+services:
+  storyteller:
+    container_name: blablabla
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        DEMO_BUILD_MESSAGE: ${DEMO_BUILD_MESSAGE:-startContainer demo build}
+    environment:
+      DEMO_BUILD_MESSAGE: ${DEMO_BUILD_MESSAGE:-startContainer demo runtime message}
+    ports:
+    - ${HOST_PORT:-8081}:8080
+    healthcheck:
+      test:
+      - CMD
+      - curl
+      - -f
+      - http://localhost:8080/health
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+...

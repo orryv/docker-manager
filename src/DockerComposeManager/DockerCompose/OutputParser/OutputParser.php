@@ -2,7 +2,6 @@
 
 namespace Orryv\DockerComposeManager\DockerCompose\OutputParser;
 
-use Orryv\DockerComposeManager\DockerCompose\Definition\DefinitionInterface;
 use Orryv\XString;
 
 /**
@@ -17,8 +16,10 @@ class OutputParser implements OutputParserInterface
         'running'
     ];
 
-    public function parse(string $id, string $outputFile, DefinitionInterface $handler): array
+    public function parse(string $id, string $outputFile): array
     {
+        
+
         if (!file_exists($outputFile)) {
             throw new \InvalidArgumentException("Output file does not exist: {$outputFile}");
         }
