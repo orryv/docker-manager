@@ -44,7 +44,7 @@ Run multiple docker compose simultaneously from different docker-compose.yml fil
 ```php
 use Orryv\DockerComposeManager;
 
-$dcm = new DockerComposeManager();
+$dcm = DockerComposeManager::new();
 
 
 // Each configuration is registered under a custom $id. 
@@ -58,73 +58,66 @@ $dcm->start(); // runs all registered compose projects in parallel and returns w
 
 ```
 
+## Architecture overview
+
+- **DockerComposeManager**: Thin façade that orchestrates configuration, execution, and progress tracking.
+- **ConfigurationManager**: Manages docker-compose definitions, YAML parsing, file handlers, and execution paths.
+- **ComposeRunner**: Builds docker-compose commands and executes them, tracking PIDs and output files.
+- **ProgressTracker**: Parses execution output and exposes blocking/non-blocking progress reporting.
+
 ## Methods
 
 ### `DockerComposeManager`
 
-```php
-use Orryv\DockerComposeManager\DockerComposeConfig;
+| Method | Signature | Description |
+| --- | --- | --- |
+| new | `public static function new(string $parser = 'ext-yaml'): self` | Build a manager with default production collaborators and YAML parser selection. |
+| __construct | `public function __construct(ConfigurationManager $config, ComposeRunner $runner, ProgressTracker $progress)` | Inject custom collaborators, useful for advanced wiring or testing. |
+| debug | `public function debug(string $dir): void` | Copy generated docker-compose and log files into the directory during cleanup. |
+| fromDockerComposeFile | `public function fromDockerComposeFile(string $id, string $file_path): DockerComposeDefinitionInterface` | Register a docker-compose definition from disk and set the execution directory. |
+| fromYamlArray | `public function fromYamlArray(string $id, array $yaml_array, string $executionFolder): DockerComposeDefinitionInterface` | Register a docker-compose definition from an in-memory array for the provided execution directory. |
+| onProgress | `public function onProgress(callable $callback): void` | Register a callback to receive progress updates while blocking on execution. |
+| start | `public function start(string|array|null $id = null, string|array|null $serviceNames = null, bool $rebuildContainers = false): bool` | Start registered configurations and block until they complete, returning success state. |
+| startAsync | `public function startAsync(string|array|null $id = null, string|array|null $serviceNames = null, bool $rebuildContainers = false): CommandExecutionResultsCollection` | Start registered configurations asynchronously and return execution metadata immediately. |
+| getProgress | `public function getProgress(string|array|null $id = null): OutputParserResultsCollectionInterface` | Parse the latest output logs for the requested configuration IDs. |
+| isFinished | `public function isFinished(string|array|null $id = null): bool` | Determine whether asynchronous executions have completed. |
+| getRunningPids | `public function getRunningPids(): array` | Retrieve process identifiers for running docker-compose commands. |
+| getFinalDockerComposeFile | `public function getFinalDockerComposeFile(string $id): string` | Retrieve the output log file path for a configuration. |
+| cleanup | `public function cleanup(): void` | Remove generated files and close processes; safe to call multiple times. |
 
-fromDockerComposeFile(string $id, string $file_path): DockerComposeConfig
-fromYamlArray(string $id, array $yaml_array): DockerComposeConfig
+### `ConfigurationManager`
 
-// Next "from" methods can't be used to start or reset containers,
-//  Only inspect, stop, remove, etc.
-fromContainerName(string $id, string $container_name): DockerComposeConfig
-fromProjectName(string $id, string $project_name): DockerComposeConfig
+| Method | Signature | Description |
+| --- | --- | --- |
+| __construct | `public function __construct(?YamlParserInterface $yamlParser, DefinitionsCollectionInterface $definitionsCollection = new DefinitionsCollection(), FileHandlerFactoryInterface $fileHandlerFactory = new FileHandlerFactory(), DefinitionFactoryInterface $definitionFactory = new DefinitionFactory())` | Inject dependencies for configuration management. |
+| setDebugDirectory | `public function setDebugDirectory(?string $dir): void` | Configure an optional directory to copy docker-compose files during cleanup. |
+| fromDockerComposeFile | `public function fromDockerComposeFile(string $id, string $filePath): DockerComposeDefinitionInterface` | Register a docker-compose definition from a YAML file. |
+| fromYamlArray | `public function fromYamlArray(string $id, array $yamlArray, string $executionFolder): DockerComposeDefinitionInterface` | Register a docker-compose definition from an array and execution folder. |
+| buildExecutionContexts | `public function buildExecutionContexts(string|array|null $id = null): array` | Prepare execution contexts and persist compose files for the selected IDs. |
+| getExecutionPath | `public function getExecutionPath(): string` | Retrieve the execution directory, throwing if none is configured. |
+| getYamlParser | `public function getYamlParser(): YamlParserInterface` | Retrieve the configured YAML parser or throw when missing. |
+| normalizeIds | `public function normalizeIds(string|array|null $id = null): array` | Normalize configuration identifiers to an array. |
+| getDefinitionsCollection | `public function getDefinitionsCollection(): DefinitionsCollectionInterface` | Access the underlying definitions collection. |
+| cleanup | `public function cleanup(): void` | Remove generated docker-compose files, optionally copying them to the debug directory. |
 
-// Container management
-start(string|array|null $id = null, ?string $service_name = null, bool $rebuild_containers = false): bool
-stop(
-    string|array|null $id = null, 
-    ?string $service_name = null, 
-    bool $remove_volumes = false, 
-    ?string $remove_images = null, // 'all', 'local', null
-): bool
-remove(
-    string|array|null $id = null, 
-    ?string $service_name = null, 
-    bool $remove_volumes = false, 
-    ?string $remove_images = null, // 'all', 'local', null
-): bool
-restart(
-    string|array|null $id = null, 
-    ?string $service_name = null,
-    bool $rebuild_containers = false,
-    bool $remove_volumes = false, 
-    ?string $remove_images = null, // 'all', 'local', null
-): bool
-inspect(string|array|null $id = null, ?string $service_name = null): ?array
-containerExists(string|array|null $id = null, ?string $service_name = null): bool
-volumesExist(string|array|null $id = null): bool
-imagesExist(string|array|null $id = null): bool
-isRunning(string|array|null $id = null, ?string $service_name = null): bool
-getErrors(string|array|null $id = null): array
-```
+### `ComposeRunner`
 
-### `DockerComposeConfig`
+| Method | Signature | Description |
+| --- | --- | --- |
+| __construct | `public function __construct(CommandExecutorInterface $commandExecutor = new CommandExecutor(), CommandExecutionResultsCollectionFactory $executionResultsCollectionFactory = new CommandExecutionResultsCollectionFactory())` | Inject command execution dependencies. |
+| start | `public function start(array $contexts, string $executionPath, string|array|null $serviceNames = null, bool $rebuildContainers = false): CommandExecutionResultsCollection` | Build and execute docker-compose commands for the provided contexts. |
+| getRunningPids | `public function getRunningPids(): array` | Retrieve running process identifiers by configuration ID. |
+| getOutputFiles | `public function getOutputFiles(): array` | Retrieve output log paths by configuration ID. |
+| getExecutionResultsForIds | `public function getExecutionResultsForIds(array $ids): array` | Fetch execution results for the requested configuration IDs. |
+| getOutputFileForId | `public function getOutputFileForId(string $id): string` | Retrieve the output log path for a specific configuration ID. |
+| cleanupOutputs | `public function cleanupOutputs(?string $debugDir = null): void` | Remove generated output files, optionally copying them to a debug directory. |
 
-```php
-#### Configuration ####
-debug(?string $path = null): self // disabled when null, will put tmp files (docker-compose, logs, etc) in $path when set
-setEnvVariable(string $name, string $value): self // Sets environment variable so docker-compose can use variables
-setEnvVariables(array $vars): self // expects array<string,string>
-setLogger(Psr\Log\LoggerInterface $logger): self
+### `ProgressTracker`
 
-// Currently callbacks apply to the whole project, not individual services.
-// TODO: check if we can expose per-service callbacks.
-onProgress(callable $callback, int $interval_ms = 250): self // TODO: define signature
-onSuccess(callable $callback): self // TODO: define signature
-onError(callable $callback): self // TODO: define signature
-
-#### docker-compose configuration manipulation ####
-// You can edit the parsed docker-compose.yml array directly:
-setDockerComposeValues(array $values): self // merges values into docker-compose configuration
-
-// Or use helper methods to set common values:
-setProjectName(string $name): self
-setContainerName(string $service_name, string $container_name): self
-setServiceName(string $service_name, string $new_service_name): self
-setPortMapping(string $service_name, int $container_port, int $host_port, string $protocol = 'tcp'): self
-setNetwork(string $network_name, array $options = []): self
-```
+| Method | Signature | Description |
+| --- | --- | --- |
+| __construct | `public function __construct(OutputParserInterface $outputParser = new OutputParser(), BlockingOutputParserInterface $blockingOutputParser = new BlockingOutputParser(new OutputParser()))` | Inject parsing dependencies. |
+| onProgress | `public function onProgress(callable $callback): void` | Register a progress callback for blocking parsing. |
+| parseBlocking | `public function parseBlocking(CommandExecutionResultsCollection $results, ?callable $onProgress = null): OutputParserResultsCollectionInterface` | Parse execution results while blocking until all commands complete. |
+| getProgress | `public function getProgress(array $executionResults): OutputParserResultsCollectionInterface` | Parse the latest output snapshots for provided execution results. |
+| isFinished | `public function isFinished(array $executionResults): bool` | Determine whether the provided execution results represent finished work. |
