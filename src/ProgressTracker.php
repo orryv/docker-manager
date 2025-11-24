@@ -4,6 +4,8 @@ namespace Orryv;
 
 use Orryv\DockerComposeManager\DockerCompose\CommandExecution\CommandExecutionResult;
 use Orryv\DockerComposeManager\DockerCompose\CommandExecution\CommandExecutionResultsCollection;
+use Orryv\DockerComposeManager\DockerCompose\Health\ContainerHealthChecker;
+use Orryv\DockerComposeManager\DockerCompose\Health\ContainerHealthCheckerInterface;
 use Orryv\DockerComposeManager\DockerCompose\OutputParser\BlockingOutputParser;
 use Orryv\DockerComposeManager\DockerCompose\OutputParser\BlockingOutputParserInterface;
 use Orryv\DockerComposeManager\DockerCompose\OutputParser\OutputParser;
@@ -22,10 +24,12 @@ class ProgressTracker
     /**
      * @param OutputParserInterface|null $outputParser Parser used for non-blocking progress reads.
      * @param BlockingOutputParserInterface|null $blockingOutputParser Parser used for blocking progress reads.
+     * @param ContainerHealthCheckerInterface|null $healthChecker Inspector used for health checks after startup.
      */
     public function __construct(
         private OutputParserInterface $outputParser = new OutputParser(),
         private BlockingOutputParserInterface $blockingOutputParser = new BlockingOutputParser(new OutputParser()),
+        private ContainerHealthCheckerInterface $healthChecker = new ContainerHealthChecker(),
     ) {
     }
 
@@ -39,14 +43,17 @@ class ProgressTracker
 
     /**
      * Parse execution results while blocking until all commands complete.
+     *
+     * @param int $stateCheckIntervalUs Microseconds to wait between state checks.
      */
     public function parseBlocking(
         CommandExecutionResultsCollection $results,
-        ?callable $onProgress = null
+        ?callable $onProgress = null,
+        int $stateCheckIntervalUs = 250000
     ): OutputParserResultsCollectionInterface {
         return $this->blockingOutputParser->parse(
             $results,
-            250000,
+            $stateCheckIntervalUs,
             $onProgress ?? $this->onProgressCallback
         );
     }
@@ -75,5 +82,23 @@ class ProgressTracker
     public function isFinished(array $executionResults): bool
     {
         return $this->getProgress($executionResults)->isFinishedExecuting();
+    }
+
+    /**
+     * Wait until all containers with health checks report healthy.
+     *
+     * @param int $stateCheckIntervalUs Microseconds to wait between health status checks.
+     */
+    public function waitForHealthyContainers(
+        OutputParserResultsCollectionInterface $parseResults,
+        int $stateCheckIntervalUs
+    ): bool {
+        $containers = [];
+
+        foreach ($parseResults as $parseResult) {
+            $containers = array_merge($containers, array_keys($parseResult->getContainerStates()));
+        }
+
+        return $this->healthChecker->waitUntilHealthy(array_unique($containers), $stateCheckIntervalUs);
     }
 }

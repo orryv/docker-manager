@@ -4,6 +4,7 @@ namespace Tests\Unit;
 
 use Orryv\DockerComposeManager\DockerCompose\CommandExecution\CommandExecutionResult;
 use Orryv\DockerComposeManager\DockerCompose\CommandExecution\CommandExecutionResultsCollection;
+use Orryv\DockerComposeManager\DockerCompose\Health\ContainerHealthCheckerInterface;
 use Orryv\DockerComposeManager\DockerCompose\OutputParser\BlockingOutputParserInterface;
 use Orryv\DockerComposeManager\DockerCompose\OutputParser\OutputParserInterface;
 use Orryv\DockerComposeManager\DockerCompose\OutputParser\OutputParserResult;
@@ -29,7 +30,8 @@ class ProgressTrackerTest extends TestCase
 
         $progressTracker = new ProgressTracker(
             $this->createMock(OutputParserInterface::class),
-            $blockingParser
+            $blockingParser,
+            $this->createMock(ContainerHealthCheckerInterface::class)
         );
 
         $captured = false;
@@ -55,7 +57,11 @@ class ProgressTrackerTest extends TestCase
             ->method('parse')
             ->willReturn($outputParserResult);
 
-        $progressTracker = new ProgressTracker($outputParser, $this->createMock(BlockingOutputParserInterface::class));
+        $progressTracker = new ProgressTracker(
+            $outputParser,
+            $this->createMock(BlockingOutputParserInterface::class),
+            $this->createMock(ContainerHealthCheckerInterface::class)
+        );
 
         $results = $progressTracker->getProgress($executionResults);
 
@@ -72,8 +78,38 @@ class ProgressTrackerTest extends TestCase
             ->method('parse')
             ->willReturn(new OutputParserResult('one', [], [], [], [], [], null, true));
 
-        $progressTracker = new ProgressTracker($outputParser, $this->createMock(BlockingOutputParserInterface::class));
+        $progressTracker = new ProgressTracker(
+            $outputParser,
+            $this->createMock(BlockingOutputParserInterface::class),
+            $this->createMock(ContainerHealthCheckerInterface::class)
+        );
 
         $this->assertTrue($progressTracker->isFinished($executionResults));
+    }
+
+    public function testWaitForHealthyContainersAggregatesAndDelegates(): void
+    {
+        $healthChecker = $this->createMock(ContainerHealthCheckerInterface::class);
+        $healthChecker->expects($this->once())
+            ->method('waitUntilHealthy')
+            ->with($this->callback(function (array $containers) {
+                sort($containers);
+                $this->assertSame(['app', 'db'], $containers);
+
+                return true;
+            }), 1000)
+            ->willReturn(true);
+
+        $progressTracker = new ProgressTracker(
+            $this->createMock(OutputParserInterface::class),
+            $this->createMock(BlockingOutputParserInterface::class),
+            $healthChecker
+        );
+
+        $parseResults = new OutputParserResultsCollection();
+        $parseResults->add(new OutputParserResult('one', ['app' => 'running'], [], [], [], [], null, true));
+        $parseResults->add(new OutputParserResult('two', ['db' => 'running', 'app' => 'running'], [], [], [], [], null, true));
+
+        $this->assertTrue($progressTracker->waitForHealthyContainers($parseResults, 1000));
     }
 }

@@ -25,6 +25,7 @@ composer require orryv/docker-compose-manager
 ## Notes
 
 - Make sure to add a valid healthcheck to each service in your docker-compose.yml files, so the library can determine when a container is "ready" (and thus can return from start(), etc). Example:
+- Health polling depends on the Docker CLI (e.g., Docker Desktop on macOS/Windows or Docker Engine on Linux) being available on the host; if `docker inspect` cannot be executed, health-aware waits will report failure.
 
 ```yaml
 services:
@@ -77,7 +78,7 @@ $dcm->start(); // runs all registered compose projects in parallel and returns w
 | fromDockerComposeFile | `public function fromDockerComposeFile(string $id, string $file_path): DockerComposeDefinitionInterface` | Register a docker-compose definition from disk and set the execution directory. |
 | fromYamlArray | `public function fromYamlArray(string $id, array $yaml_array, string $executionFolder): DockerComposeDefinitionInterface` | Register a docker-compose definition from an in-memory array for the provided execution directory. |
 | onProgress | `public function onProgress(callable $callback): void` | Register a callback to receive progress updates while blocking on execution. |
-| start | `public function start(string|array|null $id = null, string|array|null $serviceNames = null, bool $rebuildContainers = false): bool` | Start registered configurations and block until they complete, returning success state. |
+| start | `public function start(string|array|null $id = null, string|array|null $serviceNames = null, bool $rebuildContainers = false, bool $waitForHealthy = true, int $stateCheckIntervalUs = 250000): bool` | Start registered configurations and block until they complete, optionally waiting for container health. |
 | startAsync | `public function startAsync(string|array|null $id = null, string|array|null $serviceNames = null, bool $rebuildContainers = false): CommandExecutionResultsCollection` | Start registered configurations asynchronously and return execution metadata immediately. |
 | getProgress | `public function getProgress(string|array|null $id = null): OutputParserResultsCollectionInterface` | Parse the latest output logs for the requested configuration IDs. |
 | isFinished | `public function isFinished(string|array|null $id = null): bool` | Determine whether asynchronous executions have completed. |
@@ -116,8 +117,15 @@ $dcm->start(); // runs all registered compose projects in parallel and returns w
 
 | Method | Signature | Description |
 | --- | --- | --- |
-| __construct | `public function __construct(OutputParserInterface $outputParser = new OutputParser(), BlockingOutputParserInterface $blockingOutputParser = new BlockingOutputParser(new OutputParser()))` | Inject parsing dependencies. |
+| __construct | `public function __construct(OutputParserInterface $outputParser = new OutputParser(), BlockingOutputParserInterface $blockingOutputParser = new BlockingOutputParser(new OutputParser()), ContainerHealthCheckerInterface $healthChecker = new ContainerHealthChecker())` | Inject parsing and health-check dependencies. |
 | onProgress | `public function onProgress(callable $callback): void` | Register a progress callback for blocking parsing. |
-| parseBlocking | `public function parseBlocking(CommandExecutionResultsCollection $results, ?callable $onProgress = null): OutputParserResultsCollectionInterface` | Parse execution results while blocking until all commands complete. |
+| parseBlocking | `public function parseBlocking(CommandExecutionResultsCollection $results, ?callable $onProgress = null, int $stateCheckIntervalUs = 250000): OutputParserResultsCollectionInterface` | Parse execution results while blocking until all commands complete. |
 | getProgress | `public function getProgress(array $executionResults): OutputParserResultsCollectionInterface` | Parse the latest output snapshots for provided execution results. |
 | isFinished | `public function isFinished(array $executionResults): bool` | Determine whether the provided execution results represent finished work. |
+| waitForHealthyContainers | `public function waitForHealthyContainers(OutputParserResultsCollectionInterface $parseResults, int $stateCheckIntervalUs): bool` | Wait until all containers that expose health checks are healthy. |
+
+### `ContainerHealthChecker`
+
+| Method | Signature | Description |
+| --- | --- | --- |
+| waitUntilHealthy | `public function waitUntilHealthy(array $containerNames, int $pollIntervalMicroSeconds = 250000): bool` | Poll container health status using docker inspect until healthy. |

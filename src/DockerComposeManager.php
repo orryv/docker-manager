@@ -108,12 +108,15 @@ class DockerComposeManager
 
     /**
      * Starts containers defined in the Docker Compose configurations. Returns true if all containers started successfully.
+     * When $waitForHealthy is true, the call blocks until all containers with health checks report a healthy status.
      * Does NOT throw exceptions on failure, instead returns false. use getErrors() to retrieve error details.
      */
     public function start(
         string|array|null $id = null,
         string|array|null $serviceNames = null,
-        bool $rebuildContainers = false
+        bool $rebuildContainers = false,
+        bool $waitForHealthy = true,
+        int $stateCheckIntervalUs = 250000
     ): bool {
         $executionContexts = $this->config->buildExecutionContexts($id);
         $executionResults = $this->runner->start(
@@ -123,9 +126,17 @@ class DockerComposeManager
             $rebuildContainers
         );
 
-        $parseResults = $this->progress->parseBlocking($executionResults);
+        $parseResults = $this->progress->parseBlocking($executionResults, null, $stateCheckIntervalUs);
 
-        return $parseResults->isSuccessful();
+        if (!$parseResults->isSuccessful()) {
+            return false;
+        }
+
+        if (!$waitForHealthy) {
+            return true;
+        }
+
+        return $this->progress->waitForHealthyContainers($parseResults, $stateCheckIntervalUs);
     }
 
     /**
