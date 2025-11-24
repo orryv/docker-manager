@@ -90,4 +90,28 @@ class OutputParserResultsCollectionTest extends TestCase
             ['app', 'db'],
         ], $healthChecker->areHealthyCalls);
     }
+
+    public function testAreHealthyIsFalseWhenNoContainersPresent(): void
+    {
+        $healthChecker = new class implements ContainerHealthCheckerInterface {
+            public array $areHealthyCalls = [];
+
+            public function areHealthy(array $containerNames): bool
+            {
+                $this->areHealthyCalls[] = $containerNames;
+
+                return true;
+            }
+
+            public function waitUntilHealthy(array $containerNames, int $pollIntervalMicroSeconds = 250000): bool
+            {
+                return true;
+            }
+        };
+
+        $collection = new OutputParserResultsCollection($healthChecker);
+
+        $this->assertFalse($collection->areHealthy());
+        $this->assertSame([], $healthChecker->areHealthyCalls);
+    }
 }

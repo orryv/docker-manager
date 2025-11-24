@@ -79,6 +79,10 @@ class OutputParserResultsCollection implements OutputParserResultsCollectionInte
     {
         $containers = $this->collectContainerNames($id);
 
+        if (empty($containers)) {
+            return false;
+        }
+
         return $this->healthChecker->areHealthy($containers);
     }
 
