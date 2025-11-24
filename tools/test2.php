@@ -18,7 +18,7 @@ if (!file_exists($debug)) {
     mkdir($debug, 0777, true);
 }
 
-$dcm = new DockerComposeManager(YamlParserFactory::getYamlExtensionParser());
+$dcm = DockerComposeManager::new();
 $dcm->debug($debug);
 $config = $dcm->fromDockerComposeFile('test', $composeFile);
 $dcm->startAsync(null, null, true);
@@ -26,6 +26,6 @@ $dcm->startAsync(null, null, true);
 do{
     $progress = $dcm->getProgress('test')->get('test');
     // print_r($progress);
-    echo 'Progress: ' . ($progress->getBuildLastLine() ?? '') . PHP_EOL;
+    echo 'Progress: ' . ($progress->getBuildLastLine() ?? '') . ($progress->isFinishedExecuting() ? ' (finished)' : '') . PHP_EOL;
     usleep(500000);
-} while (!$progress->isFinishedExecuting());
+} while (!$progress->isFinishedExecuting() && !$progress->isHealthy());
