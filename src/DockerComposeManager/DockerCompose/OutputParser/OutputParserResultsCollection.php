@@ -59,6 +59,10 @@ class OutputParserResultsCollection implements OutputParserResultsCollectionInte
      */
     public function areContainersRunning(?string $id = null): bool
     {
+        if (empty($this->results)) {
+            return false;
+        }
+
         if ($id !== null) {
             return $this->get($id)->areContainersRunning();
         }

@@ -60,6 +60,13 @@ class OutputParserResultsCollectionTest extends TestCase
         $this->assertFalse($collection->hasErrors('two'));
     }
 
+    public function testAreContainersRunningIsFalseWhenEmpty(): void
+    {
+        $collection = new OutputParserResultsCollection();
+
+        $this->assertFalse($collection->areContainersRunning());
+    }
+
     public function testAreHealthyUsesInjectedHealthChecker(): void
     {
         $healthChecker = new class implements ContainerHealthCheckerInterface {
