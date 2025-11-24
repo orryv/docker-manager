@@ -24,8 +24,11 @@ $config = $dcm->fromDockerComposeFile('test', $composeFile);
 $dcm->startAsync(null, null, true);
 
 do{
-    $progress = $dcm->getProgress('test')->get('test');
+    $progress = $dcm->getProgress();
     // print_r($progress);
-    echo 'Progress: ' . ($progress->getBuildLastLine() ?? '') . PHP_EOL;
+    echo 'Progress: ' . ($progress->get('test')->getBuildLastLine() ?? '') . PHP_EOL;
     usleep(500000);
-} while (!$progress->isFinishedExecuting() && !$progress->isHealthy());
+} while (
+    !$progress->areContainersRunning() // If containers are running (not necessarily healthy)
+    && !$progress->areHealthy() // if healthy (and thus also running)
+);
