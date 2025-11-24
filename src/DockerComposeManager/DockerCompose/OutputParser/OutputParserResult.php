@@ -26,7 +26,7 @@ class OutputParserResult implements OutputParserResultInterface
     /** @var string[] */
     private array $errors;
 
-    private bool $scriptEnded;
+    private bool $containersRunning;
 
     /**
      * @param array<string, string> $containerStates
@@ -43,7 +43,7 @@ class OutputParserResult implements OutputParserResultInterface
         array $networkSuccess,
         array $errors,
         ?string $buildLastLine,
-        bool $scriptEnded
+        bool $containersRunning
     ) {
         $this->id = $id;
         $this->containerStates = $containerStates;
@@ -52,7 +52,7 @@ class OutputParserResult implements OutputParserResultInterface
         $this->networkSuccess = $networkSuccess;
         $this->errors = $errors;
         $this->buildLastLine = $buildLastLine;
-        $this->scriptEnded = $scriptEnded;
+        $this->containersRunning = $containersRunning;
     }
 
     /**
@@ -64,11 +64,11 @@ class OutputParserResult implements OutputParserResultInterface
     }
 
     /**
-     * Whether the execution finished.
+     * Whether container startup reached a terminal state (running or ended due to an error).
      */
-    public function isFinishedExecuting(): bool
+    public function areContainersRunning(): bool
     {
-        return $this->scriptEnded;
+        return $this->containersRunning;
     }
 
     /**

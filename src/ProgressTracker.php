@@ -21,6 +21,8 @@ class ProgressTracker
     /** @var callable|null */
     private $onProgressCallback = null;
 
+    private BlockingOutputParserInterface $blockingOutputParser;
+
     /**
      * @param OutputParserInterface|null $outputParser Parser used for non-blocking progress reads.
      * @param BlockingOutputParserInterface|null $blockingOutputParser Parser used for blocking progress reads.
@@ -28,9 +30,10 @@ class ProgressTracker
      */
     public function __construct(
         private OutputParserInterface $outputParser = new OutputParser(),
-        private BlockingOutputParserInterface $blockingOutputParser = new BlockingOutputParser(new OutputParser()),
+        ?BlockingOutputParserInterface $blockingOutputParser = null,
         private ContainerHealthCheckerInterface $healthChecker = new ContainerHealthChecker(),
     ) {
+        $this->blockingOutputParser = $blockingOutputParser ?? new BlockingOutputParser($this->outputParser, $this->healthChecker);
     }
 
     /**
@@ -65,7 +68,7 @@ class ProgressTracker
      */
     public function getProgress(array $executionResults): OutputParserResultsCollectionInterface
     {
-        $results = new OutputParserResultsCollection();
+        $results = new OutputParserResultsCollection($this->healthChecker);
 
         foreach ($executionResults as $executionResult) {
             $results->add($this->outputParser->parse($executionResult));
@@ -75,13 +78,13 @@ class ProgressTracker
     }
 
     /**
-     * Check if all tracked executions have completed.
+     * Check if all tracked executions have running containers.
      *
      * @param array<int, CommandExecutionResult> $executionResults
      */
     public function isFinished(array $executionResults): bool
     {
-        return $this->getProgress($executionResults)->isFinishedExecuting();
+        return $this->getProgress($executionResults)->areContainersRunning();
     }
 
     /**

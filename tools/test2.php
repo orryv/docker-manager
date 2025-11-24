@@ -29,6 +29,8 @@ do{
     echo 'Progress: ' . ($progress->get('test')->getBuildLastLine() ?? '') . PHP_EOL;
     usleep(500000);
 } while (
-    !$progress->areContainersRunning() // If containers are running (not necessarily healthy)
+    !$progress->areContainersRunning() // If container startup finished (running or failed, not necessarily healthy)
     && !$progress->areHealthy() // if healthy (and thus also running)
 );
+
+echo 'Containers are running.' . PHP_EOL;

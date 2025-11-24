@@ -38,7 +38,7 @@ class BlockingOutputParserTest extends TestCase
             }
         );
 
-        $this->assertTrue($results->isFinishedExecuting());
+        $this->assertTrue($results->areContainersRunning());
         $this->assertSame(2, $callbackInvoked);
     }
 }

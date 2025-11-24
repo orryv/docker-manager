@@ -13,9 +13,9 @@ interface OutputParserResultInterface
     public function getId(): string;
 
     /**
-     * Determine whether the execution finished.
+     * Determine whether container startup reached a terminal state (running or ended due to an error).
      */
-    public function isFinishedExecuting(): bool;
+    public function areContainersRunning(): bool;
 
     /**
      * Get the state of a container as reported by docker-compose.

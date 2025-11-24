@@ -3,6 +3,8 @@
 namespace Orryv\DockerComposeManager\DockerCompose\OutputParser;
 
 use Orryv\DockerComposeManager\DockerCompose\CommandExecution\CommandExecutionResultsCollection;
+use Orryv\DockerComposeManager\DockerCompose\Health\ContainerHealthChecker;
+use Orryv\DockerComposeManager\DockerCompose\Health\ContainerHealthCheckerInterface;
 use Orryv\DockerComposeManager\DockerCompose\OutputParser\BlockingOutputParserInterface;
 use Orryv\DockerComposeManager\DockerCompose\OutputParser\OutputParserInterface;
 use Orryv\DockerComposeManager\DockerCompose\OutputParser\OutputParserResultsCollection;
@@ -13,11 +15,10 @@ use Orryv\DockerComposeManager\DockerCompose\OutputParser\OutputParserResultsCol
  */
 class BlockingOutputParser implements BlockingOutputParserInterface
 {
-    private OutputParserInterface $outputParser;
-
-    public function __construct(OutputParserInterface $outputParser) 
-    {
-        $this->outputParser = $outputParser;
+    public function __construct(
+        private OutputParserInterface $outputParser,
+        private ContainerHealthCheckerInterface $healthChecker = new ContainerHealthChecker(),
+    ) {
     }
 
     /**
@@ -29,7 +30,7 @@ class BlockingOutputParser implements BlockingOutputParserInterface
         ?callable $onProgressCallback = null
     ): OutputParserResultsCollectionInterface
     {
-        $latestParseResults = new OutputParserResultsCollection();
+        $latestParseResults = new OutputParserResultsCollection($this->healthChecker);
 
         do {
             $allFinished = true;
@@ -41,7 +42,7 @@ class BlockingOutputParser implements BlockingOutputParserInterface
                     $onProgressCallback($parseResult);
                 }
 
-                if (!$parseResult->isFinishedExecuting()) {
+                if (!$parseResult->areContainersRunning()) {
                     $allFinished = false;
                 }
             }

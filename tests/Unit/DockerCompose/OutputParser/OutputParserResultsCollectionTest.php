@@ -3,6 +3,7 @@
 namespace Tests\Unit\DockerCompose\OutputParser;
 
 use InvalidArgumentException;
+use Orryv\DockerComposeManager\DockerCompose\Health\ContainerHealthCheckerInterface;
 use Orryv\DockerComposeManager\DockerCompose\OutputParser\OutputParserResult;
 use Orryv\DockerComposeManager\DockerCompose\OutputParser\OutputParserResultsCollection;
 use PHPUnit\Framework\TestCase;
@@ -18,7 +19,7 @@ class OutputParserResultsCollectionTest extends TestCase
 
         $this->assertTrue($collection->has('one'));
         $this->assertSame($result, $collection->get('one'));
-        $this->assertTrue($collection->isFinishedExecuting());
+        $this->assertTrue($collection->areContainersRunning());
         $this->assertTrue($collection->isSuccessful());
         $this->assertFalse($collection->hasErrors());
         $this->assertSame([], $collection->getErrors());
@@ -51,11 +52,73 @@ class OutputParserResultsCollectionTest extends TestCase
         $collection->add($resultOne);
         $collection->add($resultTwo);
 
-        $this->assertFalse($collection->isFinishedExecuting());
+        $this->assertFalse($collection->areContainersRunning());
         $this->assertFalse($collection->isSuccessful());
         $this->assertTrue($collection->hasErrors());
         $this->assertSame(['error'], $collection->getErrors('one'));
         $this->assertTrue($collection->hasErrors('one'));
         $this->assertFalse($collection->hasErrors('two'));
+    }
+
+    public function testAreContainersRunningIsFalseWhenEmpty(): void
+    {
+        $collection = new OutputParserResultsCollection();
+
+        $this->assertFalse($collection->areContainersRunning());
+    }
+
+    public function testAreHealthyUsesInjectedHealthChecker(): void
+    {
+        $healthChecker = new class implements ContainerHealthCheckerInterface {
+            public array $areHealthyCalls = [];
+
+            public function areHealthy(array $containerNames): bool
+            {
+                $this->areHealthyCalls[] = $containerNames;
+
+                return count($containerNames) === 1;
+            }
+
+            public function waitUntilHealthy(array $containerNames, int $pollIntervalMicroSeconds = 250000): bool
+            {
+                return true;
+            }
+        };
+
+        $collection = new OutputParserResultsCollection($healthChecker);
+        $collection->add(new OutputParserResult('one', ['app' => 'running'], [], [], [], [], null, true));
+        $collection->add(new OutputParserResult('two', ['db' => 'running'], [], [], [], [], null, true));
+
+        $this->assertTrue($collection->areHealthy('one'));
+        $this->assertFalse($collection->areHealthy());
+
+        $this->assertSame([
+            ['app'],
+            ['app', 'db'],
+        ], $healthChecker->areHealthyCalls);
+    }
+
+    public function testAreHealthyIsFalseWhenNoContainersPresent(): void
+    {
+        $healthChecker = new class implements ContainerHealthCheckerInterface {
+            public array $areHealthyCalls = [];
+
+            public function areHealthy(array $containerNames): bool
+            {
+                $this->areHealthyCalls[] = $containerNames;
+
+                return true;
+            }
+
+            public function waitUntilHealthy(array $containerNames, int $pollIntervalMicroSeconds = 250000): bool
+            {
+                return true;
+            }
+        };
+
+        $collection = new OutputParserResultsCollection($healthChecker);
+
+        $this->assertFalse($collection->areHealthy());
+        $this->assertSame([], $healthChecker->areHealthyCalls);
     }
 }

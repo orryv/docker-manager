@@ -21,7 +21,7 @@ class OutputParserResultTest extends TestCase
         );
 
         $this->assertSame('id-1', $result->getId());
-        $this->assertTrue($result->isFinishedExecuting());
+        $this->assertTrue($result->areContainersRunning());
         $this->assertSame('running', $result->getContainerState('container'));
         $this->assertTrue($result->isContainerSuccessful('container'));
         $this->assertSame(['container' => 'running'], $result->getContainerStates());

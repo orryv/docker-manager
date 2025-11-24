@@ -51,7 +51,7 @@ class OutputParser implements OutputParserInterface
             ],
             'build_last_line' => null,
             'errors' => [],
-            'script_ended' => false,
+            'containers_running' => false,
         ];
 
         foreach(explode("\n", $outputContent) as $pos => $line) {
@@ -75,20 +75,20 @@ class OutputParser implements OutputParserInterface
                 $parsed['build_last_line'] = $line->toString();
             } elseif($line->startsWith('Error ')) {
                 $parsed['errors'][] = $line->toString();
-                $parsed['script_ended'] = true;
+                $parsed['containers_running'] = true;
             }
         }
 
-        $all_containers_ended = true;
+        $allContainersRunning = true;
         foreach($parsed['states']['containers'] as $container_name => $status) {
             if(!in_array(strtolower($status), $this->success)) {
-                $all_containers_ended = false;
+                $allContainersRunning = false;
                 break;
             }
         }
 
-        if($all_containers_ended && count($parsed['states']['containers']) > 0) {
-            $parsed['script_ended'] = true;
+        if($allContainersRunning && count($parsed['states']['containers']) > 0) {
+            $parsed['containers_running'] = true;
         }
 
         return new OutputParserResult(
@@ -99,7 +99,7 @@ class OutputParser implements OutputParserInterface
             $parsed['success']['networks'],
             $parsed['errors'],
             $parsed['build_last_line'],
-            $parsed['script_ended']
+            $parsed['containers_running']
         );
     }
 }

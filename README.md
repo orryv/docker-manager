@@ -4,7 +4,7 @@ A PHP library to manage Docker Compose configurations and containers programmati
 
 ## TODO
 
-- [ ] Wait for healthchecks for isFinishedExecuting() to return true (or add an isHealthy() method)
+- [x] Add container-health evaluation alongside container startup progress via `areHealthy()`
 
 ## Installation
 
@@ -81,7 +81,7 @@ $dcm->start(); // runs all registered compose projects in parallel and returns w
 | start | `public function start(string|array|null $id = null, string|array|null $serviceNames = null, bool $rebuildContainers = false, bool $waitForHealthy = true, int $stateCheckIntervalUs = 250000): bool` | Start registered configurations and block until they complete, optionally waiting for container health. |
 | startAsync | `public function startAsync(string|array|null $id = null, string|array|null $serviceNames = null, bool $rebuildContainers = false): CommandExecutionResultsCollection` | Start registered configurations asynchronously and return execution metadata immediately. |
 | getProgress | `public function getProgress(string|array|null $id = null): OutputParserResultsCollectionInterface` | Parse the latest output logs for the requested configuration IDs. |
-| isFinished | `public function isFinished(string|array|null $id = null): bool` | Determine whether asynchronous executions have completed. |
+| isFinished | `public function isFinished(string|array|null $id = null): bool` | Determine whether asynchronous executions have reached a terminal state (running containers or a reported startup error) for the selected IDs. |
 | getRunningPids | `public function getRunningPids(): array` | Retrieve process identifiers for running docker-compose commands. |
 | getFinalDockerComposeFile | `public function getFinalDockerComposeFile(string $id): string` | Retrieve the output log file path for a configuration. |
 | cleanup | `public function cleanup(): void` | Remove generated files and close processes; safe to call multiple times. |
@@ -117,15 +117,38 @@ $dcm->start(); // runs all registered compose projects in parallel and returns w
 
 | Method | Signature | Description |
 | --- | --- | --- |
-| __construct | `public function __construct(OutputParserInterface $outputParser = new OutputParser(), BlockingOutputParserInterface $blockingOutputParser = new BlockingOutputParser(new OutputParser()), ContainerHealthCheckerInterface $healthChecker = new ContainerHealthChecker())` | Inject parsing and health-check dependencies. |
+| __construct | `public function __construct(OutputParserInterface $outputParser = new OutputParser(), ?BlockingOutputParserInterface $blockingOutputParser = null, ContainerHealthCheckerInterface $healthChecker = new ContainerHealthChecker())` | Inject parsing and health-check dependencies. |
 | onProgress | `public function onProgress(callable $callback): void` | Register a progress callback for blocking parsing. |
 | parseBlocking | `public function parseBlocking(CommandExecutionResultsCollection $results, ?callable $onProgress = null, int $stateCheckIntervalUs = 250000): OutputParserResultsCollectionInterface` | Parse execution results while blocking until all commands complete. |
 | getProgress | `public function getProgress(array $executionResults): OutputParserResultsCollectionInterface` | Parse the latest output snapshots for provided execution results. |
-| isFinished | `public function isFinished(array $executionResults): bool` | Determine whether the provided execution results represent finished work. |
+| isFinished | `public function isFinished(array $executionResults): bool` | Determine whether the provided execution results report running containers or a terminal startup error. |
 | waitForHealthyContainers | `public function waitForHealthyContainers(OutputParserResultsCollectionInterface $parseResults, int $stateCheckIntervalUs): bool` | Wait until all containers that expose health checks are healthy. |
+
+### `OutputParserResultsCollectionInterface`
+
+| Method | Signature | Description |
+| --- | --- | --- |
+| add | `public function add(OutputParserResultInterface $result): void` | Add or replace a parsed result keyed by ID. |
+| get | `public function get(string $id): OutputParserResultInterface` | Retrieve a parsed result for a specific Docker Compose definition. |
+| has | `public function has(string $id): bool` | Determine whether the collection contains results for the given ID. |
+| areContainersRunning | `public function areContainersRunning(?string $id = null): bool` | Check whether one or all executions report that container startup reached a terminal state (running or errored). |
+| areHealthy | `public function areHealthy(?string $id = null): bool` | Perform a single health evaluation for containers tracked by one or all executions. |
+| isSuccessful | `public function isSuccessful(?string $id = null): bool` | Determine whether the execution(s) were successful. |
+| getBuildLastLine | `public function getBuildLastLine(string $id): ?string` | Retrieve the last build line for a specific result. |
+| getErrors | `public function getErrors(?string $id = null): array` | Retrieve errors from either a specific result or all results. |
+| hasErrors | `public function hasErrors(?string $id = null): bool` | Determine whether any errors exist for a specific result or within the collection. |
+| isContainerSuccessful | `public function isContainerSuccessful(string $id, string $containerName): bool` | Check whether a container in a given result has succeeded. |
+| getContainerState | `public function getContainerState(string $id, string $containerName): ?string` | Retrieve the state of a specific container for the given result. |
+| getContainerStates | `public function getContainerStates(string $id): array` | Retrieve all container states for the given result. |
+| getContainerSuccess | `public function getContainerSuccess(string $id): array` | Retrieve all container success flags for the given result. |
+| isNetworkSuccessful | `public function isNetworkSuccessful(string $id, string $networkName): bool` | Check whether a network in a given result has succeeded. |
+| getNetworkState | `public function getNetworkState(string $id, string $networkName): ?string` | Retrieve the state of a specific network for the given result. |
+| getNetworkStates | `public function getNetworkStates(string $id): array` | Retrieve all network states for the given result. |
+| getNetworkSuccess | `public function getNetworkSuccess(string $id): array` | Retrieve all network success flags for the given result. |
 
 ### `ContainerHealthChecker`
 
 | Method | Signature | Description |
 | --- | --- | --- |
 | waitUntilHealthy | `public function waitUntilHealthy(array $containerNames, int $pollIntervalMicroSeconds = 250000): bool` | Poll container health status using docker inspect until healthy. |
+| areHealthy | `public function areHealthy(array $containerNames): bool` | Perform a single-pass health evaluation for the provided containers. |

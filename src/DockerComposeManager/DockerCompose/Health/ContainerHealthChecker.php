@@ -19,41 +19,42 @@ class ContainerHealthChecker implements ContainerHealthCheckerInterface
         }
 
         while (true) {
-            $hasHealthChecks = false;
-            $allHealthy = true;
+            $evaluation = $this->evaluateHealth($containers);
 
-            foreach ($containers as $container) {
-                $status = $this->fetchHealthStatus($container);
-
-                if (!$status['inspectable']) {
-                    return false;
-                }
-
-                if (!$status['hasHealthCheck']) {
-                    continue;
-                }
-
-                $hasHealthChecks = true;
-
-                if ($status['status'] === 'unhealthy') {
-                    return false;
-                }
-
-                if ($status['status'] !== 'healthy') {
-                    $allHealthy = false;
-                }
+            if (!$evaluation['inspectable'] || $evaluation['unhealthyFound']) {
+                return false;
             }
 
-            if (!$hasHealthChecks) {
-                return true;
-            }
-
-            if ($allHealthy) {
+            if (!$evaluation['hasHealthChecks'] || $evaluation['allHealthy']) {
                 return true;
             }
 
             usleep($pollIntervalMicroSeconds);
         }
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function areHealthy(array $containerNames): bool
+    {
+        $containers = array_values(array_unique($containerNames));
+
+        if (empty($containers)) {
+            return true;
+        }
+
+        $evaluation = $this->evaluateHealth($containers);
+
+        if (!$evaluation['inspectable'] || $evaluation['unhealthyFound']) {
+            return false;
+        }
+
+        if (!$evaluation['hasHealthChecks']) {
+            return true;
+        }
+
+        return $evaluation['allHealthy'];
     }
 
     /**
@@ -95,6 +96,50 @@ class ContainerHealthChecker implements ContainerHealthCheckerInterface
             'inspectable' => true,
             'hasHealthCheck' => true,
             'status' => $status,
+        ];
+    }
+
+    /**
+     * @param string[] $containerNames
+     *
+     * @return array{inspectable: bool, hasHealthChecks: bool, allHealthy: bool, unhealthyFound: bool}
+     */
+    private function evaluateHealth(array $containerNames): array
+    {
+        $hasHealthChecks = false;
+        $allHealthy = true;
+        $inspectable = true;
+        $unhealthyFound = false;
+
+        foreach ($containerNames as $container) {
+            $status = $this->fetchHealthStatus($container);
+
+            if (!$status['inspectable']) {
+                $inspectable = false;
+                break;
+            }
+
+            if (!$status['hasHealthCheck']) {
+                continue;
+            }
+
+            $hasHealthChecks = true;
+
+            if ($status['status'] === 'unhealthy') {
+                $unhealthyFound = true;
+                break;
+            }
+
+            if ($status['status'] !== 'healthy') {
+                $allHealthy = false;
+            }
+        }
+
+        return [
+            'inspectable' => $inspectable,
+            'hasHealthChecks' => $hasHealthChecks,
+            'allHealthy' => $allHealthy,
+            'unhealthyFound' => $unhealthyFound,
         ];
     }
 }

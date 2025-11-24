@@ -14,4 +14,12 @@ interface ContainerHealthCheckerInterface
      * Returns false if container inspection fails (e.g., missing Docker CLI or unreachable container).
      */
     public function waitUntilHealthy(array $containerNames, int $pollIntervalMicroSeconds = 250000): bool;
+
+    /**
+     * Perform a single health evaluation for the provided containers.
+     *
+     * Returns true if every inspectable container with a defined healthcheck reports "healthy".
+     * Containers without a healthcheck are treated as immediately healthy.
+     */
+    public function areHealthy(array $containerNames): bool;
 }

@@ -29,7 +29,7 @@ class OutputParserTest extends TestCase
         $this->assertTrue($result->isContainerSuccessful('db'));
         $this->assertSame(['demo' => 'created'], $result->getNetworkStates());
         $this->assertTrue($result->isNetworkSuccessful('demo'));
-        $this->assertTrue($result->isFinishedExecuting());
+        $this->assertTrue($result->areContainersRunning());
         $this->assertTrue($result->isSuccessful());
         $this->assertFalse($result->hasErrors());
 
@@ -47,7 +47,7 @@ class OutputParserTest extends TestCase
 
         $this->assertSame('#12 1.23 building', $result->getBuildLastLine());
         $this->assertSame(['Error failed to start'], $result->getErrors());
-        $this->assertTrue($result->isFinishedExecuting());
+        $this->assertTrue($result->areContainersRunning());
         $this->assertFalse($result->isSuccessful());
 
         unlink($tempFile);

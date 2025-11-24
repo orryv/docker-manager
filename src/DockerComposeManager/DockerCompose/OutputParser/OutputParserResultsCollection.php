@@ -4,6 +4,8 @@ namespace Orryv\DockerComposeManager\DockerCompose\OutputParser;
 
 use ArrayIterator;
 use InvalidArgumentException;
+use Orryv\DockerComposeManager\DockerCompose\Health\ContainerHealthChecker;
+use Orryv\DockerComposeManager\DockerCompose\Health\ContainerHealthCheckerInterface;
 use Traversable;
 
 /**
@@ -13,6 +15,16 @@ class OutputParserResultsCollection implements OutputParserResultsCollectionInte
 {
     /** @var array<string, OutputParserResultInterface> */
     private array $results = [];
+
+    private ContainerHealthCheckerInterface $healthChecker;
+
+    /**
+     * @param ContainerHealthCheckerInterface|null $healthChecker Health checker used for container evaluations.
+     */
+    public function __construct(?ContainerHealthCheckerInterface $healthChecker = null)
+    {
+        $this->healthChecker = $healthChecker ?? new ContainerHealthChecker();
+    }
 
     /**
      * Add or replace a parsed result keyed by id.
@@ -43,21 +55,39 @@ class OutputParserResultsCollection implements OutputParserResultsCollectionInte
     }
 
     /**
-     * Whether one or all executions finished.
+     * Whether one or all executions reached a terminal state (running containers or a reported error).
      */
-    public function isFinishedExecuting(?string $id = null): bool
+    public function areContainersRunning(?string $id = null): bool
     {
+        if (empty($this->results)) {
+            return false;
+        }
+
         if ($id !== null) {
-            return $this->get($id)->isFinishedExecuting();
+            return $this->get($id)->areContainersRunning();
         }
 
         foreach ($this->results as $result) {
-            if (!$result->isFinishedExecuting()) {
+            if (!$result->areContainersRunning()) {
                 return false;
             }
         }
 
         return true;
+    }
+
+    /**
+     * Whether one or all executions have healthy containers.
+     */
+    public function areHealthy(?string $id = null): bool
+    {
+        $containers = $this->collectContainerNames($id);
+
+        if (empty($containers)) {
+            return false;
+        }
+
+        return $this->healthChecker->areHealthy($containers);
     }
 
     /**
@@ -207,5 +237,22 @@ class OutputParserResultsCollection implements OutputParserResultsCollectionInte
     public function count(): int
     {
         return count($this->results);
+    }
+
+    /**
+     * @return string[]
+     */
+    private function collectContainerNames(?string $id = null): array
+    {
+        if ($id !== null) {
+            return array_keys($this->get($id)->getContainerStates());
+        }
+
+        $containers = [];
+        foreach ($this->results as $result) {
+            $containers = array_merge($containers, array_keys($result->getContainerStates()));
+        }
+
+        return array_values(array_unique($containers));
     }
 }

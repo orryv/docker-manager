@@ -26,9 +26,14 @@ interface OutputParserResultsCollectionInterface extends IteratorAggregate, Coun
     public function has(string $id): bool;
 
     /**
-     * Determine whether the execution(s) finished. When no id is provided, all results must be finished.
+     * Determine whether container startup reached a terminal state. When no id is provided, all results must be in a terminal state.
      */
-    public function isFinishedExecuting(?string $id = null): bool;
+    public function areContainersRunning(?string $id = null): bool;
+
+    /**
+     * Determine whether containers are healthy. When no id is provided, all containers across results must be healthy.
+     */
+    public function areHealthy(?string $id = null): bool;
 
     /**
      * Determine whether the execution(s) were successful. When no id is provided, all results must be successful.
